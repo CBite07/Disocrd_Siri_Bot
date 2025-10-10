@@ -2,7 +2,7 @@
 > 커뮤니티 활성화를 위한 출석-레벨-역할/공지 봇 · 장기 운영을 위한 모듈식(소프트 코딩) 설계
 
 <p align="center">
-  <a href="https://discord.gg/G9NAJzpxEM"><img alt="Discord" src="https://img.shields.io/badge/Join_Official_Discord-4.1k%2B_members-5865F2?logo=discord&logoColor=white"></a>
+  <a href="https://discord.gg/G9NAJzpxEM"><img alt="Discord" src="https://img.shields.io/badge/Join_Official_Discord-100%2B_members-5865F2?logo=discord&logoColor=white"></a>
   <a href="https://www.youtube.com/@FCPUG"><img alt="YouTube" src="https://img.shields.io/badge/Official_YouTube-FCPUG-FF0000?logo=youtube&logoColor=white"></a>
 </p>
 
