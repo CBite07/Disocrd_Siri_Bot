@@ -2,8 +2,15 @@
 > 커뮤니티 활성화를 위한 출석-레벨-역할/공지 봇 · 장기 운영을 위한 모듈식(소프트 코딩) 설계
 
 <p align="center">
-  <a href="https://discord.gg/G9NAJzpxEM"><img alt="Discord" src="https://img.shields.io/badge/Join_Official_Discord-100%2B_members-5865F2?logo=discord&logoColor=white"></a>
-  <a href="https://www.youtube.com/@FCPUG"><img alt="YouTube" src="https://img.shields.io/badge/Official_YouTube-FCPUG-FF0000?logo=youtube&logoColor=white"></a>
+  <a href="https://github.com/CBite07/Disocrd_Siri_Bot">
+    <img src="https://raw.githubusercontent.com/CBite07/Disocrd_Siri_Bot/main/assets/Union.svg" width="160" alt="Siri Bot Logo" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://discord.gg/G9NAJzpxEM"><img alt="Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white"></a>
+  <a href="https://www.youtube.com/@FCPUG"><img alt="YouTube" src="https://img.shields.io/badge/YouTube-FCPUG-FF0000?style=for-the-badge&logo=youtube&logoColor=white"></a>
+  <a href="https://github.com/CBite07/Disocrd_Siri_Bot"><img alt="GitHub" src="https://img.shields.io/badge/GitHub-Repo-2b2b2b?style=for-the-badge&logo=github&logoColor=white"></a>
 </p>
 
 ---
