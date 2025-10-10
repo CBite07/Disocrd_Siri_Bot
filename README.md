@@ -1,6 +1,3 @@
-# Discord-Siri (aka “Siri Bot”)
-> 커뮤니티 활성화를 위한 출석-레벨-역할/공지 봇 · 장기 운영을 위한 모듈식(소프트 코딩) 설계
-
 <p align="center">
   <a href="https://github.com/CBite07/Disocrd_Siri_Bot">
     <img src="https://raw.githubusercontent.com/CBite07/Disocrd_Siri_Bot/main/assets/Union.svg" width="160" alt="Siri Bot Logo" />
