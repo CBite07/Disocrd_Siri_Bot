@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/CBite07/Disocrd_Siri_Bot">
-    <img src="https://raw.githubusercontent.com/CBite07/Disocrd_Siri_Bot/main/assets/Union.svg" width="160" alt="Siri Bot Logo" />
+    <img src="./assets/Union.svg" width="160" alt="Siri Bot Logo" />
   </a>
 </p>
 
