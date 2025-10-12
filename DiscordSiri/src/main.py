@@ -62,6 +62,7 @@ class SiriBot(commands.Bot):
         intents.message_content = True
         intents.members = True
         intents.guilds = True
+        intents.voice_states = True  # 음성 상태 변경 감지
         
         super().__init__(
             command_prefix=Config.get_command_prefix(),
@@ -93,7 +94,8 @@ class SiriBot(commands.Bot):
             'cogs.admin',
             'cogs.announcement',
             'cogs.debug',
-            'cogs.music'  # 음악 기능 추가
+            'cogs.music',  # 음악 기능 추가
+            'cogs.voice'   # Edge-TTS 음성 기능
         ]
         
         for cog in cog_files:
@@ -152,10 +154,74 @@ class SiriBot(commands.Bot):
         """봇 종료 시 정리 작업"""
         logger.info("봇 종료 시작 - 정리 작업 수행 중...")
         
-        # 음악 시스템 정리
+        # 음성 시스템 정리 (VoiceCog)
+        voice_cog = self.get_cog('VoiceCog')
+        if voice_cog:
+            try:
+                logger.info("음성 시스템 정리 시작...")
+                # 모든 길드의 음성 연결 확인 및 정리
+                for guild in self.guilds:
+                    if guild.voice_client:
+                        try:
+                            # 현재 재생 중이면 중지
+                            if guild.voice_client.is_playing():
+                                guild.voice_client.stop()
+                                logger.info(f"길드 {guild.name}: 재생 중인 오디오 중지")
+                                # 재생 중지 후 짧은 대기
+                                await asyncio.sleep(0.3)
+                            
+                            # 작별 인사 TTS (빠르게)
+                            try:
+                                tts_text = "잠시 후 돌아올게요"
+                                audio_file = await voice_cog.generate_tts(tts_text)
+                                audio_source = discord.FFmpegPCMAudio(audio_file)
+                                
+                                # 재생 완료를 기다리는 이벤트
+                                done = asyncio.Event()
+                                
+                                def cleanup_after(error):
+                                    try:
+                                        if os.path.exists(audio_file):
+                                            os.remove(audio_file)
+                                    except:
+                                        pass
+                                    done.set()
+                                
+                                guild.voice_client.play(audio_source, after=cleanup_after)
+                                
+                                # 최대 3초 대기 (작별 인사 재생)
+                                try:
+                                    await asyncio.wait_for(done.wait(), timeout=3.0)
+                                except asyncio.TimeoutError:
+                                    guild.voice_client.stop()
+                                
+                            except Exception as e:
+                                logger.warning(f"작별 인사 TTS 실패: {e}")
+                            
+                            # 음성 채널 연결 종료
+                            await guild.voice_client.disconnect()
+                            logger.info(f"길드 {guild.name}: 음성 채널 연결 종료")
+                            
+                        except Exception as e:
+                            logger.error(f"길드 {guild.name} 음성 정리 중 오류: {e}")
+                
+                # VoiceCog의 임시 파일 정리
+                try:
+                    for file in voice_cog.temp_dir.glob("tts_*.mp3"):
+                        file.unlink()
+                    logger.info("임시 TTS 파일 정리 완료")
+                except Exception as e:
+                    logger.error(f"임시 파일 정리 중 오류: {e}")
+                
+                logger.info("음성 시스템 정리 완료")
+            except Exception as e:
+                logger.error(f"음성 시스템 정리 중 오류: {e}")
+        
+        # 음악 시스템 정리 (MusicCog)
         music_cog = self.get_cog('MusicCog')
         if music_cog:
             try:
+                logger.info("음악 시스템 정리 시작...")
                 await music_cog.cleanup_all_players()
                 logger.info("음악 시스템 정리 완료")
             except Exception as e:
@@ -163,8 +229,11 @@ class SiriBot(commands.Bot):
         
         # 데이터베이스 연결 종료
         if self.db:
-            await self.db.close()
-            logger.info("데이터베이스 연결 종료")
+            try:
+                await self.db.close()
+                logger.info("데이터베이스 연결 종료")
+            except Exception as e:
+                logger.error(f"데이터베이스 종료 중 오류: {e}")
         
         # 부모 클래스의 close 호출
         await super().close()
