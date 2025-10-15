@@ -117,12 +117,79 @@
 -   `MUSIC_USE_HTTPS` (기본: `True`) — HTTPS 사용 여부
 -   `MUSIC_GEO_BYPASS` (기본: `True`) — 지역 우회 사용
 -   `MUSIC_PROXY_URL` — 필요 시 HTTPS 프록시 URL 지정 (예: `https://user:pass@host:port`)
+-   `YOUTUBE_COOKIES_PATH` — YouTube 쿠키 파일 경로 (봇 차단 우회, 선택)
 
 **운영 팁:**
 
 -   유튜브 측 변경으로 `yt-dlp`가 수시로 업데이트됩니다. 정기적으로 최신화하세요:
     -   가상환경 활성화 후: `pip install -U yt-dlp`
 -   Ubuntu에 `ffmpeg` 설치: `sudo apt update && sudo apt install -y ffmpeg`
+-   **봇 차단 우회**: YouTube가 "Sign in to confirm you're not a bot" 오류를 반환하는 경우:
+    -   이미 `player_client=ios,android` 설정이 적용되어 있어 대부분의 차단을 우회합니다
+    -   여전히 문제가 있다면 프록시(`MUSIC_PROXY_URL`) 설정을 고려하세요
+    -   또는 브라우저 쿠키를 추출하여 사용하는 방법도 있습니다 (고급)
+
+---
+
+## 2.6. Siri ↔ GPT 연동 (듀얼 봇 구성)
+
+- 개요: Siri 봇은 사용자 인터페이스(명령 수신 및 피드백)를 담당하고, GPT 봇은 음악 재생 같은 실행 작업을 담당합니다. 두 봇은 내부 HTTP API로 통신합니다.
+- 동작 요약:
+    - 사용자가 Siri 봇에 `/재생 [검색어]` 명령을 입력합니다.
+    - Siri 봇은 사용자의 음성 채널 정보와 검색어를 GPT 봇의 `/play` API로 전송합니다.
+    - GPT 봇이 해당 길드의 음성 채널에 접속하여 재생을 시작합니다.
+
+### 설정
+
+- `.env` 파일에 다음 항목을 추가/설정하세요:
+    - `SIRI_BOT_TOKEN` — Siri 봇 토큰
+    - `GPT_BOT_TOKEN` — GPT 봇 토큰
+    - `GPT_BOT_API_HOST` — GPT API 호스트 (기본: localhost)
+    - `GPT_BOT_API_PORT` — GPT API 포트 (기본: 5000)
+
+### 실행
+
+- Siri 봇 시작 (프로젝트 루트에서):
+
+```bash
+# Siri 봇 실행
+python3 src/run.py
+```
+
+- GPT 봇 시작 (프로젝트 루트에서):
+
+```bash
+# GPT 봇 실행 (별도 프로세스)
+python3 src/gpt_bot.py
+```
+
+### API 엔드포인트
+
+- `/play` (POST) — Siri → GPT 재생 요청
+    - body: {"query": "검색어 또는 URL", "guild_id": int, "channel_id": int, "user": "사용자 이름"}
+- `/stop` (POST) — Siri → GPT 정지 요청
+
+---
+
+## 2.7. TTS (Text-to-Speech) 기능
+
+- 개요: Siri 봇은 서버 내 상태 알림(예: 재생 시작, 재생 중단)을 TTS로 안내할 수 있습니다. 기본 구현은 `cogs.voice`에서 제공되며 Edge-TTS 기반입니다.
+
+### 사용 방법
+
+- `.env` 설정에서 `COMMAND_PREFIX`와 봇 토큰이 올바르게 설정되어 있는지 확인하세요.
+- `/tts [메시지]` 또는 `/음성알림 [메시지]` 같은 커스텀 명령(설치된 Cog에 따라 다름)을 통해 TTS를 실행할 수 있습니다.
+
+### 권장 의존성
+
+- `edge-tts` (Windows/Mac/Linux에서 모두 사용 가능)
+- 시스템에 `ffmpeg`가 설치되어 있어야 합니다 (오디오 합성 및 전송용)
+
+### 운영 팁
+
+- TTS 음량/음성 설정은 `cogs/voice.py` 내부에서 조정할 수 있습니다.
+- 서버 환경(특히 리눅스)에서는 `ffmpeg`와 `libopus`가 설치되어 있어야 안정적으로 작동합니다.
+
 
 ## 3. 기술 설계 및 데이터베이스
 
