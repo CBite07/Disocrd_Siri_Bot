@@ -75,6 +75,13 @@ class YTDLPSource:
         'geo_bypass': True,
         'geo_bypass_country': 'US',  # 미국 지역으로 우회
         'geo_bypass_ip_block': None,
+        # 봇 차단 우회 (YouTube bot detection bypass)
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['ios', 'android'],  # iOS/Android 클라이언트로 위장
+                'skip': ['hls', 'dash']  # HLS/DASH 스킵
+            }
+        },
     }
     
     FFMPEG_OPTIONS = {
@@ -124,8 +131,26 @@ class YTDLPSource:
             options['geo_bypass_country'] = 'US'
             logger.info("음악 서비스 지역 우회 활성화")
         
+        # YouTube 쿠키 파일 설정 (봇 차단 우회)
+        cookies_path = Config.get_youtube_cookies_path()
+        if cookies_path:
+            import os
+            if os.path.exists(cookies_path):
+                options['cookiefile'] = cookies_path
+                logger.info(f"YouTube 쿠키 파일 사용: {cookies_path}")
+            else:
+                logger.warning(f"쿠키 파일을 찾을 수 없음: {cookies_path}")
+        
         logger.info(f"yt-dlp 초기화 완료 - User-Agent: {user_agent[:50]}...")
         self.ytdl = yt_dlp.YoutubeDL(options)
+    
+    def normalize_url(self, url: str) -> str:
+        """URL 정규화 - Shorts를 일반 watch URL로 변환"""
+        # YouTube Shorts URL을 일반 watch URL로 변환
+        if 'shorts/' in url:
+            url = url.replace('/shorts/', '/watch?v=')
+            logger.info(f"Shorts URL을 일반 URL로 변환: {url}")
+        return url
         
     async def extract_info(self, search: str) -> tuple[Optional[Track], Optional[str]]:
         """유튜브에서 음악 정보 추출 - 오류 메시지도 함께 반환"""
@@ -139,6 +164,9 @@ class YTDLPSource:
         # 너무 짧은 검색어 확인
         if len(search.strip()) < 2:
             return None, "검색어가 너무 짧습니다. (최소 2글자)"
+        
+        # URL 정규화 (Shorts → 일반 URL)
+        search = self.normalize_url(search)
         
         for attempt in range(max_retries):
             try:

@@ -11,7 +11,28 @@ class Config:
     # 환경 변수에서 설정 로드 (메서드로 동적 접근)
     @staticmethod
     def get_bot_token() -> str:
-        return os.getenv("DISCORD_BOT_TOKEN", "")
+        """Siri 봇 토큰 (하위 호환성)"""
+        return os.getenv("SIRI_BOT_TOKEN", os.getenv("DISCORD_BOT_TOKEN", ""))
+    
+    @staticmethod
+    def get_siri_bot_token() -> str:
+        """Siri 봇 토큰"""
+        return os.getenv("SIRI_BOT_TOKEN", "")
+    
+    @staticmethod
+    def get_gpt_bot_token() -> str:
+        """GPT 봇 토큰"""
+        return os.getenv("GPT_BOT_TOKEN", "")
+    
+    @staticmethod
+    def get_gpt_api_host() -> str:
+        """GPT 봇 API 호스트"""
+        return os.getenv("GPT_BOT_API_HOST", "localhost")
+    
+    @staticmethod
+    def get_gpt_api_port() -> int:
+        """GPT 봇 API 포트"""
+        return int(os.getenv("GPT_BOT_API_PORT", "5000"))
     
     @staticmethod
     def get_database_path() -> str:
@@ -36,6 +57,11 @@ class Config:
     @staticmethod
     def get_music_proxy_url() -> str:
         return os.getenv("MUSIC_PROXY_URL", "")
+    
+    @staticmethod
+    def get_youtube_cookies_path() -> str:
+        """YouTube 쿠키 파일 경로"""
+        return os.getenv("YOUTUBE_COOKIES_PATH", "")
     
     @staticmethod
     def get_music_use_https() -> bool:

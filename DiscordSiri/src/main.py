@@ -94,7 +94,7 @@ class SiriBot(commands.Bot):
             'cogs.admin',
             'cogs.announcement',
             'cogs.debug',
-            'cogs.music',  # 음악 기능 추가
+            'cogs.siri_music',  # Siri 음악 인터페이스 (GPT 봇에게 전달)
             'cogs.voice'   # Edge-TTS 음성 기능
         ]
         
