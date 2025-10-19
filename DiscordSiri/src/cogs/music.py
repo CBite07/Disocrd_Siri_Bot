@@ -61,13 +61,10 @@ class YTDLPSource:
         'quiet': True,
         'no_warnings': True,
         'default_search': 'ytsearch',
-        'source_address': '0.0.0.0',
-        'retries': 10,
-        'fragment_retries': 10,
-        'socket_timeout': 30,
-        # HTTPS 우회를 위한 추가 옵션
+        'source_address': None,  # 기본값 사용 (0.0.0.0은 일부 환경에서 문제 발생)
+        # HTTPS 보안 설정
         'prefer_insecure': False,  # HTTPS 선호
-        'force_ssl': True,  # SSL/TLS 강제 사용
+        'nocheckcertificate': False,  # 인증서 검증 활성화
         'http_headers': {},  # 동적으로 설정됨
         # 프록시 설정 (필요시)
         'proxy': None,  # 'https://your-proxy-server:port' 형태로 설정 가능
@@ -75,13 +72,24 @@ class YTDLPSource:
         'geo_bypass': True,
         'geo_bypass_country': 'US',  # 미국 지역으로 우회
         'geo_bypass_ip_block': None,
-        # 봇 차단 우회 (YouTube bot detection bypass)
+        # 봇 차단 우회 강화 (YouTube bot detection bypass)
         'extractor_args': {
             'youtube': {
-                'player_client': ['ios', 'android'],  # iOS/Android 클라이언트로 위장
-                'skip': ['hls', 'dash']  # HLS/DASH 스킵
+                'player_client': ['ios', 'android', 'web'],  # 다중 클라이언트 우회
+                'player_skip': ['configs', 'webpage'],  # 불필요한 요청 생략
+                'skip': ['hls', 'dash'],  # HLS/DASH 스킵으로 빠른 스트림 확보
+                'innertube_host': 'www.youtube.com',  # 공식 호스트 사용
+                'innertube_key': None,  # 기본 키 사용
             }
         },
+        # 추가 속도/안정성 개선 옵션
+        'http_chunk_size': 10485760,  # 10MB 청크 (큰 파일 스트리밍 안정성)
+        'socket_timeout': 30,
+        'retries': 10,
+        'fragment_retries': 10,
+        # 요청 간격 제한 (과도한 요청 방지)
+        'sleep_interval': 0,  # 기본 간격
+        'max_sleep_interval': 5,  # 최대 5초 간격
     }
     
     FFMPEG_OPTIONS = {
@@ -119,10 +127,9 @@ class YTDLPSource:
             options['proxy'] = proxy_url
             logger.info(f"음악 프록시 설정: {proxy_url}")
         
-        # HTTPS 설정
+        # HTTPS 설정 확인 및 적용
         if Config.get_music_use_https():
             options['prefer_insecure'] = False
-            options['force_ssl'] = True
             logger.info("음악 서비스 HTTPS 모드 활성화")
         
         # 지역 우회 설정
@@ -131,7 +138,7 @@ class YTDLPSource:
             options['geo_bypass_country'] = 'US'
             logger.info("음악 서비스 지역 우회 활성화")
         
-        # YouTube 쿠키 파일 설정 (봇 차단 우회)
+        # YouTube 쿠키 설정 (봇 차단 우회)
         cookies_path = Config.get_youtube_cookies_path()
         if cookies_path:
             import os
@@ -140,6 +147,19 @@ class YTDLPSource:
                 logger.info(f"YouTube 쿠키 파일 사용: {cookies_path}")
             else:
                 logger.warning(f"쿠키 파일을 찾을 수 없음: {cookies_path}")
+        else:
+            # 쿠키 파일이 없으면 브라우저 쿠키 자동 사용 시도
+            try:
+                # Chrome 쿠키 우선 시도
+                options['cookiesfrombrowser'] = ('chrome',)
+                logger.info("Chrome 브라우저 쿠키 자동 사용")
+            except Exception:
+                try:
+                    # Firefox 쿠키 대안 시도
+                    options['cookiesfrombrowser'] = ('firefox',)
+                    logger.info("Firefox 브라우저 쿠키 자동 사용")
+                except Exception:
+                    logger.warning("브라우저 쿠키 자동 가져오기 실패 - 쿠키 없이 진행")
         
         logger.info(f"yt-dlp 초기화 완료 - User-Agent: {user_agent[:50]}...")
         self.ytdl = yt_dlp.YoutubeDL(options)
