@@ -153,14 +153,7 @@
 
 ```bash
 # Siri 봇 실행
-python3 src/run.py
-```
-
-- GPT 봇 시작 (프로젝트 루트에서):
-
-```bash
-# GPT 봇 실행 (별도 프로세스)
-python3 src/gpt_bot.py
+python3 src/main.py
 ```
 
 ### API 엔드포인트
