@@ -59,13 +59,14 @@ def preflight_check() -> bool:
         return False
 
     # 필수 토큰 확인
-    bot_token = os.getenv("BOT_TOKEN")
-    if not bot_token:
-        logging.error("BOT_TOKEN 환경 변수가 설정되어 있지 않습니다 (.env 파일 확인).")
+    siri_bot_token = Config.get_bot_token()  # SIRI_BOT_TOKEN 확인
+    if not siri_bot_token:
+        logging.error("SIRI_BOT_TOKEN 환경 변수가 설정되어 있지 않습니다 (.env 파일 확인).")
         ok = False
 
     # 선택 토큰(GPT_BOT_TOKEN) 안내
-    if not os.getenv("GPT_BOT_TOKEN"):
+    gpt_bot_token = Config.get_gpt_bot_token()
+    if not gpt_bot_token:
         logging.warning("GPT_BOT_TOKEN이 설정되지 않았습니다. 음악 기능이 비활성화됩니다.")
 
     # 디렉토리 확인 및 생성
