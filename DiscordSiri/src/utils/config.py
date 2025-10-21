@@ -71,6 +71,11 @@ class Config:
     def get_music_geo_bypass() -> bool:
         return os.getenv("MUSIC_GEO_BYPASS", "True").lower() == "true"
     
+    @staticmethod
+    def get_ffmpeg_path() -> str:
+        """FFmpeg 실행 파일 경로 (환경 변수로 설정 가능)"""
+        return os.getenv("FFMPEG_PATH", "ffmpeg")
+    
     # 호환성을 위한 프로퍼티
     BOT_TOKEN = property(lambda self: Config.get_bot_token())
     DATABASE_PATH = property(lambda self: Config.get_database_path()) 
