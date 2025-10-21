@@ -95,13 +95,16 @@ class YTDLPSource:
     FFMPEG_OPTIONS = {
         'before_options': (
             '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 '
-            '-reconnect_at_eof 1 -reconnect_on_network_error 1 '
-            '-reconnect_on_http_error 4xx,5xx -nostdin'
+            '-nostdin'
         ),
         'options': '-vn -filter:a "volume=0.5"'
     }
     
     def __init__(self):
+        # FFmpeg 경로 설정 (소프트 코딩)
+        self.ffmpeg_path = Config.get_ffmpeg_path()
+        logger.info(f"FFmpeg 경로 설정: {self.ffmpeg_path}")
+        
         # 환경 변수에 따라 옵션 동적 설정
         options = self.YTDL_OPTIONS.copy()
         
@@ -152,17 +155,28 @@ class YTDLPSource:
             try:
                 # Chrome 쿠키 우선 시도
                 options['cookiesfrombrowser'] = ('chrome',)
-                logger.info("Chrome 브라우저 쿠키 자동 사용")
-            except Exception:
+                logger.info("Chrome 브라우저 쿠키 자동 사용 시도")
+            except Exception as e:
+                logger.debug(f"Chrome 쿠키 가져오기 실패: {e}")
                 try:
                     # Firefox 쿠키 대안 시도
                     options['cookiesfrombrowser'] = ('firefox',)
-                    logger.info("Firefox 브라우저 쿠키 자동 사용")
-                except Exception:
-                    logger.warning("브라우저 쿠키 자동 가져오기 실패 - 쿠키 없이 진행")
+                    logger.info("Firefox 브라우저 쿠키 자동 사용 시도")
+                except Exception as e:
+                    logger.debug(f"Firefox 쿠키 가져오기 실패: {e}")
+                    logger.info("브라우저 쿠키 없이 진행 (우분투 서버 환경)")
         
         logger.info(f"yt-dlp 초기화 완료 - User-Agent: {user_agent[:50]}...")
-        self.ytdl = yt_dlp.YoutubeDL(options)
+        
+        try:
+            self.ytdl = yt_dlp.YoutubeDL(options)
+        except Exception as e:
+            logger.error(f"yt-dlp 초기화 실패: {e}")
+            # 브라우저 쿠키 옵션 제거하고 재시도
+            if 'cookiesfrombrowser' in options:
+                del options['cookiesfrombrowser']
+                logger.info("브라우저 쿠키 옵션 제거 후 재시도")
+                self.ytdl = yt_dlp.YoutubeDL(options)
     
     def normalize_url(self, url: str) -> str:
         """URL 정규화 - Shorts를 일반 watch URL로 변환"""
@@ -195,8 +209,12 @@ class YTDLPSource:
                 # 재시도 시 새로운 User-Agent 사용
                 if attempt > 0:
                     new_user_agent = random.choice(self.USER_AGENTS)
-                    self.ytdl.params['http_headers']['User-Agent'] = new_user_agent
-                    logger.info(f"재시도 - 새 User-Agent 사용: {new_user_agent[:50]}...")
+                    try:
+                        if 'http_headers' in self.ytdl.params and self.ytdl.params['http_headers']:
+                            self.ytdl.params['http_headers']['User-Agent'] = new_user_agent
+                            logger.info(f"재시도 - 새 User-Agent 사용: {new_user_agent[:50]}...")
+                    except Exception as e:
+                        logger.debug(f"User-Agent 변경 실패 (무시): {e}")
                     await asyncio.sleep(retry_delay * attempt)  # 점진적 지연
                 
                 data = await asyncio.get_event_loop().run_in_executor(
@@ -228,27 +246,38 @@ class YTDLPSource:
                     return None, "스트리밍 URL을 찾을 수 없습니다."
                 
                 # 제목 확인
-                title = data.get('title', '').strip()
+                title = data.get('title', '').strip() if data.get('title') else ''
                 if not title or title.lower() in ['private video', 'deleted video', '[private video]', '[deleted video]']:
                     return None, "비공개 또는 삭제된 동영상입니다."
+                
+                url = data.get('url', '')
+                if not url:
+                    if attempt < max_retries - 1:
+                        continue
+                    return None, "스트리밍 URL을 찾을 수 없습니다."
                     
                 track = Track(
                     title=title,
-                    url=data.get('url'),
-                    uploader=data.get('uploader', 'Unknown'),
+                    url=url,
+                    uploader=data.get('uploader') or 'Unknown',
                     thumbnail=data.get('thumbnail')
                 )
                 
                 logger.info(f"음악 정보 추출 성공: {track.title}")
                 return track, None
                 
-            except yt_dlp.utils.DownloadError as e:
+            except Exception as e:
+                # yt_dlp의 DownloadError를 포함한 모든 예외 처리
                 error_msg = str(e).lower()
                 logger.warning(f"시도 {attempt + 1} 실패: {e}")
                 
                 # 재시도 가능한 오류인지 확인
                 if attempt < max_retries - 1:
-                    if any(keyword in error_msg for keyword in ['network', 'connection', 'timeout', '429', 'rate limit']):
+                    # DownloadError 또는 네트워크 관련 오류
+                    if any(keyword in error_msg for keyword in [
+                        'network', 'connection', 'timeout', '429', 'rate limit',
+                        'downloaderror', 'http error'
+                    ]):
                         logger.info(f"재시도 가능한 오류 - {retry_delay * (attempt + 1)}초 후 재시도")
                         continue
                 
@@ -259,33 +288,23 @@ class YTDLPSource:
                     return None, "동영상을 찾을 수 없습니다. 검색어를 확인해주세요."
                 elif 'network' in error_msg or 'connection' in error_msg:
                     return None, "네트워크 연결 문제가 발생했습니다. 잠시 후 다시 시도해주세요."
-                else:
-                    return None, f"동영상 처리 중 오류가 발생했습니다: {str(e)[:100]}"
-                    
-            except Exception as e:
-                logger.error(f"음악 정보 추출 실패 (시도 {attempt + 1}): {e}")
-                error_msg = str(e).lower()
-                
-                # 재시도 가능한 오류인지 확인
-                if attempt < max_retries - 1:
-                    if any(keyword in error_msg for keyword in ['timeout', 'connection', 'network']):
-                        logger.info(f"일반 오류 재시도 - {retry_delay * (attempt + 1)}초 후 재시도")
-                        continue
-                
-                # 최종 실패
-                if 'timeout' in error_msg:
+                elif 'timeout' in error_msg:
                     return None, "요청 시간이 초과되었습니다. 다시 시도해주세요."
-                elif 'forbidden' in error_msg:
+                elif 'forbidden' in error_msg or '403' in error_msg:
                     return None, "접근이 제한된 동영상입니다."
                 else:
-                    return None, "알 수 없는 오류가 발생했습니다. 다른 검색어로 시도해주세요."
+                    return None, f"동영상 처리 중 오류: {str(e)[:100]}"
         
         # 모든 재시도 실패
         return None, f"모든 재시도 실패 ({max_retries}회 시도). 잠시 후 다시 시도해주세요."
             
     def get_discord_source(self, url: str) -> discord.FFmpegPCMAudio:
         """Discord 재생을 위한 오디오 소스 생성"""
-        return discord.FFmpegPCMAudio(url, **self.FFMPEG_OPTIONS)
+        return discord.FFmpegPCMAudio(
+            url, 
+            executable=self.ffmpeg_path,
+            **self.FFMPEG_OPTIONS
+        )
 
 class MusicPlayer:
     """초간단 음악 플레이어 클래스 - 한 곡씩만 재생"""
