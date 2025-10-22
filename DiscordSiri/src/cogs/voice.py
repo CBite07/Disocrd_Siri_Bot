@@ -1,5 +1,5 @@
 """
-Edge-TTS 음성 기능 Cog
+Google TTS 음성 기능 Cog
 디스코드 음성 채널에 자동으로 참여하고 TTS를 통해 인사하는 기능
 
 핵심 기능:
@@ -12,7 +12,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import logging
-import edge_tts
+from gtts import gTTS
 import asyncio
 import os
 from pathlib import Path
@@ -25,14 +25,12 @@ from utils.helpers import has_admin_permissions
 logger = logging.getLogger(__name__)
 
 class VoiceCog(commands.Cog):
-    """Edge-TTS 음성 기능"""
+    """Google TTS 음성 기능"""
     
     def __init__(self, bot):
         self.bot = bot
         # 서버별 자동 참여 설정 저장 (길드 ID: bool)
         self.auto_join_settings = {}
-        # TTS 음성 설정 (한국어 여성 음성)
-        self.voice = "ko-KR-SunHiNeural"
         # 임시 파일 저장 경로
         self.temp_dir = Path(tempfile.gettempdir()) / "siri_tts"
         self.temp_dir.mkdir(exist_ok=True)
@@ -78,31 +76,7 @@ class VoiceCog(commands.Cog):
             '🎵': '음표', '🎶': '음악', '🎤': '마이크', '🎧': '헤드폰',
             '📱': '휴대폰', '💻': '노트북', '⌨️': '키보드', '🖥️': '컴퓨터',
             '🎮': '게임', '🕹️': '조이스틱', '🎲': '주사위', '🎯': '과녁',
-            '🎰': '슬롯', '🎳': '볼링', '⚽': '축구공', '🏀': '농구공',
-            '🏈': '미식축구공', '⚾': '야구공', '🥎': '소프트볼', '🎾': '테니스공',
-            '🏐': '배구공', '🏉': '럭비공', '🥏': '프리스비', '🎱': '당구공',
-            '🏓': '탁구', '🏸': '배드민턴', '🏒': '하키', '🏑': '필드하키',
-            '🥍': '라크로스', '🏏': '크리켓', '🥅': '골대', '⛳': '골프',
-            '🍕': '피자', '🍔': '햄버거', '🍟': '감자튀김', '🌭': '핫도그',
-            '🍿': '팝콘', '🧂': '소금', '🥗': '샐러드', '🍝': '스파게티',
-            '🍜': '라면', '🍲': '음식', '🍛': '카레', '🍣': '초밥',
-            '🍱': '도시락', '🥟': '만두', '🦪': '굴', '🍤': '새우튀김',
-            '🍙': '주먹밥', '🍚': '밥', '🍘': '센베이', '🍥': '어묵',
-            '🥠': '포춘쿠키', '🥮': '월병', '🍢': '꼬치', '🍡': '경단',
-            '🍧': '빙수', '🍨': '아이스크림', '🍦': '소프트아이스크림', '🥧': '파이',
-            '🧁': '컵케이크', '🍰': '케이크', '🎂': '생일케이크', '🍮': '푸딩',
-            '🍭': '막대사탕', '🍬': '사탕', '🍫': '초콜릿', '🍿': '팝콘',
-            '🍩': '도넛', '🍪': '쿠키', '🌰': '밤', '🥜': '땅콩',
-            '☕': '커피', '🍵': '차', '🧃': '주스', '🥤': '음료',
-            '🧋': '버블티', '🍶': '술', '🍺': '맥주', '🍻': '건배',
-            '🥂': '샴페인', '🍷': '와인', '🥃': '위스키', '🍸': '칵테일',
-            '🍹': '트로피컬', '🧉': '마테', '🚗': '자동차', '🚕': '택시',
-            '🚙': '에스유브이', '🚌': '버스', '🚎': '트롤리', '🏎️': '레이싱카',
-            '🚓': '경찰차', '🚑': '구급차', '🚒': '소방차', '🚐': '미니버스',
-            '🛻': '픽업트럭', '🚚': '트럭', '🚛': '트럭', '🚜': '트랙터',
-            '🏍️': '오토바이', '🛵': '스쿠터', '🚲': '자전거', '🛴': '킥보드',
-            '✈️': '비행기', '🚁': '헬기', '🛶': '카누', '⛵': '요트',
-            '🚤': '모터보트', '🛥️': '보트', '⛴️': '페리', '🚢': '배',
+            '🍕': '피자', '🍔': '햄버거', '🍟': '감자튀김', '☕': '커피',
         }
         
         # 반복 문자 패턴 매핑
@@ -166,7 +140,7 @@ class VoiceCog(commands.Cog):
     
     async def generate_tts(self, text: str) -> str:
         """
-        Edge-TTS를 사용하여 음성 파일 생성
+        gTTS를 사용하여 음성 파일 생성
         
         Args:
             text: 변환할 텍스트
@@ -175,16 +149,50 @@ class VoiceCog(commands.Cog):
             생성된 오디오 파일의 경로
         """
         try:
+            # 텍스트 전처리 및 검증
+            text = text.strip()
+            
+            # 빈 텍스트 체크
+            if not text:
+                logger.warning("TTS 생성: 빈 텍스트")
+                raise ValueError("빈 텍스트는 TTS로 변환할 수 없습니다")
+            
+            # 특수문자만 있는지 체크 (한글, 영문, 숫자가 하나도 없으면)
+            if not re.search(r'[가-힣a-zA-Z0-9]', text):
+                logger.warning(f"TTS 생성: 특수문자만 포함된 텍스트 - {text}")
+                raise ValueError("특수문자만 포함된 텍스트는 TTS로 변환할 수 없습니다")
+            
             # 임시 파일 경로 생성
-            temp_file = self.temp_dir / f"tts_{asyncio.current_task().get_name()}_{id(text)}.mp3"
+            import time
+            timestamp = int(time.time() * 1000)
+            temp_file = self.temp_dir / f"tts_{timestamp}_{id(text)}.mp3"
             
-            # Edge-TTS로 음성 생성
-            communicate = edge_tts.Communicate(text, self.voice)
-            await communicate.save(str(temp_file))
+            logger.info(f"TTS 생성 시도 (gTTS-한국어): '{text[:50]}'")
             
-            logger.info(f"TTS 파일 생성 완료: {temp_file}")
+            # gTTS로 음성 생성 (비동기 실행을 위해 run_in_executor 사용)
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: gTTS(text=text, lang='ko', slow=False).save(str(temp_file))
+            )
+            
+            # 파일이 실제로 생성되었는지 확인
+            if not temp_file.exists():
+                logger.error(f"TTS 파일이 생성되지 않음: {temp_file}")
+                raise ValueError("TTS 파일 생성 실패 - 파일 없음")
+            
+            file_size = temp_file.stat().st_size
+            if file_size == 0:
+                logger.error(f"TTS 파일이 비어있음: {temp_file}")
+                temp_file.unlink()  # 빈 파일 삭제
+                raise ValueError("TTS 파일 생성 실패 - 빈 파일")
+            
+            logger.info(f"TTS 파일 생성 완료: {temp_file.name} (크기: {file_size} bytes)")
             return str(temp_file)
             
+        except ValueError:
+            # ValueError는 그대로 전파
+            raise
         except Exception as e:
             logger.error(f"TTS 생성 중 오류 발생: {e}")
             raise
@@ -404,7 +412,6 @@ class VoiceCog(commands.Cog):
             # TTS 작별 인사 재생
             try:
                 await self.play_tts(interaction.guild.voice_client, "안녕히 계세요!")
-                # 작별 인사 후 약간의 대기
             except Exception as e:
                 logger.error(f"TTS 재생 실패: {e}")
             
@@ -467,6 +474,17 @@ class VoiceCog(commands.Cog):
             
             # 처리 후 빈 메시지면 무시
             if not tts_text.strip():
+                logger.debug(f"TTS 건너뜀: 빈 메시지 (원본: {message.content[:50]})")
+                return
+            
+            # 특수문자만 있는지 체크
+            if not re.search(r'[가-힣a-zA-Z0-9]', tts_text):
+                logger.debug(f"TTS 건너뜀: 특수문자만 포함 (처리된 텍스트: {tts_text})")
+                return
+            
+            # 너무 짧은 메시지 처리 (1자 이하)
+            if len(tts_text.strip()) < 2:
+                logger.debug(f"TTS 건너뜀: 너무 짧은 메시지 (처리된 텍스트: {tts_text})")
                 return
             
             # 너무 긴 메시지는 잘라서 읽기 (200자 제한)
@@ -476,6 +494,9 @@ class VoiceCog(commands.Cog):
             await self.play_tts(voice_client, tts_text)
             logger.info(f"TTS 메시지 읽음: {message.author.display_name} - {tts_text[:50]}")
             
+        except ValueError as e:
+            # TTS 변환 불가능한 텍스트 (로그만 남기고 조용히 무시)
+            logger.debug(f"TTS 건너뜀 (ValueError): {e} - 원본: {message.content[:50]}")
         except Exception as e:
             logger.error(f"메시지 TTS 재생 중 오류: {e}")
     
@@ -558,28 +579,8 @@ class VoiceCog(commands.Cog):
                     
                     # 간단한 작별 인사 (언로드 시에는 빠르게)
                     try:
-                        tts_text = "다시 올게요"
-                        audio_file = await self.generate_tts(tts_text)
-                        audio_source = discord.FFmpegPCMAudio(audio_file)
-                        
-                        done = asyncio.Event()
-                        
-                        def cleanup_file(error):
-                            try:
-                                if os.path.exists(audio_file):
-                                    os.remove(audio_file)
-                            except:
-                                pass
-                            done.set()
-                        
-                        guild.voice_client.play(audio_source, after=cleanup_file)
-                        
-                        # 최대 2초 대기
-                        try:
-                            await asyncio.wait_for(done.wait(), timeout=2.0)
-                        except asyncio.TimeoutError:
-                            guild.voice_client.stop()
-                            
+                        await self.play_tts(guild.voice_client, "다시 올게요")
+                        await asyncio.sleep(2.0)  # 최대 2초 대기
                     except Exception as e:
                         logger.warning(f"{guild.name}: 작별 인사 실패 - {e}")
                     
@@ -611,4 +612,4 @@ class VoiceCog(commands.Cog):
 async def setup(bot):
     """Cog 로드"""
     await bot.add_cog(VoiceCog(bot))
-    logger.info("VoiceCog 로드 완료")
+    logger.info("VoiceCog 로드 완료 (Google TTS)")
