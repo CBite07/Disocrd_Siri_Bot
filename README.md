@@ -166,7 +166,7 @@ python3 src/main.py
 
 ## 2.7. TTS (Text-to-Speech) 기능
 
-- 개요: Siri 봇은 서버 내 상태 알림(예: 재생 시작, 재생 중단)을 TTS로 안내할 수 있습니다. 기본 구현은 `cogs.voice`에서 제공되며 Edge-TTS 기반입니다.
+- 개요: Siri 봇은 서버 내 상태 알림(예: 재생 시작, 재생 중단)을 TTS로 안내할 수 있습니다. 기본 구현은 `cogs.voice`에서 제공되며 GTTS (GoogleTTS) 기반입니다.
 
 ### 사용 방법
 
@@ -175,7 +175,7 @@ python3 src/main.py
 
 ### 권장 의존성
 
-- `edge-tts` (Windows/Mac/Linux에서 모두 사용 가능)
+- `gtts` (Windows/Mac/Linux에서 모두 사용 가능)
 - 시스템에 `ffmpeg`가 설치되어 있어야 합니다 (오디오 합성 및 전송용)
 
 ### 운영 팁
