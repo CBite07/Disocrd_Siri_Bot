@@ -85,82 +85,20 @@
 
 ---
 
-### 2.5. 음악 재생 시스템 (Phase 5)
+### 2.5. 음악 재생 시스템 (제거됨)
 
-> 사용자 스토리:
-> 서버 멤버로서, 음성 채널에서 유튜브 음악을 재생/일시정지/정지하고 싶다. 반복 재생과 자동 퇴장 등 기본 동작이 안정적으로 작동하길 원한다.
+> **중요**: YouTube의 보안 강화로 인해 음악 재생 기능이 제거되었습니다.
+> 음악 재생이 필요한 경우 전용 음악 봇(예: Rythm, Groovy 대체 봇)을 사용하는 것을 권장합니다.
 
-**요구사항/동작:**
+**제거 사유:**
+- YouTube의 "Sign in to confirm you're not a bot" 보안 강화
+- PO Token, 쿠키, bgutil 등 모든 우회 방법 실패
+- 장기 운영에 불안정성 증가
 
--   **명령어**: `/재생 [유튜브 URL 또는 검색어]`
-    -   사용자는 먼저 음성 채널에 접속해야 함. 접속하지 않은 경우 에러 안내.
-    -   재생 중에는 메시지에 표시되는 3개의 버튼으로 제어:
-        -   ⏸️(일시정지/재생 토글), 🔄/🔂(반복 토글), ⏹️(정지 및 퇴장)
--   **재생 모델**: 단일 트랙 재생(큐 없음, 간결성과 안정성 우선)
--   **타임아웃**:
-    -   5분간 유휴 상태면 자동 퇴장
-    -   봇만 혼자 채널에 5분간 남아있으면 자동 퇴장
--   **지역/HTTPS**:
-    -   HTTPS 강제 및 지역 우회(기본 US) 옵션 제공
-    -   필요 시 프록시 설정 가능
--   **오류 처리**:
-    -   비공개/삭제/지역 제한/네트워크 문제에 대한 사용자 메시지 제공
-    -   스트림 시작 실패/오디오 소스 생성 실패 시 자동 퇴장으로 정리
-
-**의존성:**
-
--   Python 패키지: `discord.py`, `yt-dlp`, `PyNaCl`
--   시스템 패키지: `ffmpeg` (오디오 디코딩/스트리밍에 필수)
-
-**설정(환경 변수):**
-
--   `MUSIC_USE_HTTPS` (기본: `True`) — HTTPS 사용 여부
--   `MUSIC_GEO_BYPASS` (기본: `True`) — 지역 우회 사용
--   `MUSIC_PROXY_URL` — 필요 시 HTTPS 프록시 URL 지정 (예: `https://user:pass@host:port`)
--   `YOUTUBE_COOKIES_PATH` — YouTube 쿠키 파일 경로 (봇 차단 우회, 선택)
-
-**운영 팁:**
-
--   유튜브 측 변경으로 `yt-dlp`가 수시로 업데이트됩니다. 정기적으로 최신화하세요:
-    -   가상환경 활성화 후: `pip install -U yt-dlp`
--   Ubuntu에 `ffmpeg` 설치: `sudo apt update && sudo apt install -y ffmpeg`
--   **봇 차단 우회**: YouTube가 "Sign in to confirm you're not a bot" 오류를 반환하는 경우:
-    -   이미 `player_client=ios,android` 설정이 적용되어 있어 대부분의 차단을 우회합니다
-    -   여전히 문제가 있다면 프록시(`MUSIC_PROXY_URL`) 설정을 고려하세요
-    -   또는 브라우저 쿠키를 추출하여 사용하는 방법도 있습니다 (고급)
-
----
-
-## 2.6. Siri ↔ GPT 연동 (듀얼 봇 구성)
-
-- 개요: Siri 봇은 사용자 인터페이스(명령 수신 및 피드백)를 담당하고, GPT 봇은 음악 재생 같은 실행 작업을 담당합니다. 두 봇은 내부 HTTP API로 통신합니다.
-- 동작 요약:
-    - 사용자가 Siri 봇에 `/재생 [검색어]` 명령을 입력합니다.
-    - Siri 봇은 사용자의 음성 채널 정보와 검색어를 GPT 봇의 `/play` API로 전송합니다.
-    - GPT 봇이 해당 길드의 음성 채널에 접속하여 재생을 시작합니다.
-
-### 설정
-
-- `.env` 파일에 다음 항목을 추가/설정하세요:
-    - `SIRI_BOT_TOKEN` — Siri 봇 토큰
-    - `GPT_BOT_TOKEN` — GPT 봇 토큰
-    - `GPT_BOT_API_HOST` — GPT API 호스트 (기본: localhost)
-    - `GPT_BOT_API_PORT` — GPT API 포트 (기본: 5000)
-
-### 실행
-
-- Siri 봇 시작 (프로젝트 루트에서):
-
-```bash
-# Siri 봇 실행
-python3 src/main.py
-```
-
-### API 엔드포인트
-
-- `/play` (POST) — Siri → GPT 재생 요청
-    - body: {"query": "검색어 또는 URL", "guild_id": int, "channel_id": int, "user": "사용자 이름"}
-- `/stop` (POST) — Siri → GPT 정지 요청
+**대안:**
+- [Lavalink](https://github.com/lavalink-devs/Lavalink) 기반 음악 봇 사용
+- [Music Bot](https://github.com/jagrosh/MusicBot) 등 전용 봇 활용
+- Discord 프리미엄의 Go Live 기능 활용
 
 ---
 
