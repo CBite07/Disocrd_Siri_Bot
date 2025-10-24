@@ -1,13 +1,13 @@
 """
 Siri Discord Bot - 통합 실행 파일
-디스코드 서버 커뮤니티 활성화를 위한 다기능 봇 + 음악 재생 봇
+디스코드 서버 커뮤니티 활성화를 위한 다기능 봇
 
 핵심 기능:
 - 출석 체크 및 레벨링 시스템
 - 리더보드
 - 공지 및 규칙 시스템
 - 관리자 기능
-- 음악 재생 (GPT 봇)
+- TTS 음성 알림
 """
 
 import asyncio
@@ -44,9 +44,8 @@ logger = logging.getLogger(__name__)
 def preflight_check() -> bool:
     """실행 전 환경 및 디렉토리 점검.
     - .env 파일 존재 여부
-    - 필수 환경변수(BOT_TOKEN)
+    - 필수 환경변수(SIRI_BOT_TOKEN)
     - 필요한 디렉토리 생성(src/data, assets)
-    - 선택 환경변수(GPT_BOT_TOKEN) 안내
     """
     ok = True
 
