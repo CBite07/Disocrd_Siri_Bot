@@ -14,12 +14,10 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from threading import Thread
 
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify
 
 from utils.database import DatabaseManager
 from utils.config import Config
@@ -64,10 +62,7 @@ def preflight_check() -> bool:
         logging.error("SIRI_BOT_TOKEN 환경 변수가 설정되어 있지 않습니다 (.env 파일 확인).")
         ok = False
 
-    # 선택 토큰(GPT_BOT_TOKEN) 안내
-    gpt_bot_token = Config.get_gpt_bot_token()
-    if not gpt_bot_token:
-        logging.warning("GPT_BOT_TOKEN이 설정되지 않았습니다. 음악 기능이 비활성화됩니다.")
+
 
     # 디렉토리 확인 및 생성
     try:
@@ -90,18 +85,14 @@ def preflight_check() -> bool:
 
     return ok
 
-# Flask 앱 생성 (GPT 봇 API 서버)
-app = Flask(__name__)
-
 # 전역 봇 인스턴스
 siri_bot = None
-gpt_bot = None
 
 
 class SiriBot(commands.Bot):
     """
     Siri Discord Bot 메인 클래스
-    출석, 레벨링, 관리 기능 담당
+    출석, 레벨링, 관리, 음성 알림 기능 담당
     """
     
     def __init__(self):
@@ -140,7 +131,7 @@ class SiriBot(commands.Bot):
             'cogs.leaderboard', 
             'cogs.admin',  # debug 기능 포함
             'cogs.announcement',
-            'cogs.voice'   # Edge-TTS 음성 기능
+            'cogs.voice'   # TTS 음성 기능
         ]
         
         for cog in cog_files:
@@ -262,223 +253,8 @@ class SiriBot(commands.Bot):
         logger.info("[Siri] 봇 정리 작업 완료")
 
 
-class GPTBot(commands.Bot):
-    """GPT 음악 재생 전용 봇"""
-    
-    def __init__(self):
-        intents = discord.Intents.default()
-        intents.message_content = True
-        intents.guilds = True
-        intents.voice_states = True
-        intents.members = True
-        
-        super().__init__(
-            command_prefix=Config.get_command_prefix(),
-            intents=intents,
-            help_command=None
-        )
-        
-        self.db = DatabaseManager(Config.get_database_path())
-        
-    async def setup_hook(self):
-        """봇 시작 시 실행되는 설정"""
-        logger.info("[GPT] 음악 봇 초기화 중...")
-        
-        # 음악 Cog 로드
-        try:
-            await self.load_extension("cogs.music")
-            logger.info("[GPT] 음악 시스템 로드 완료")
-        except Exception as e:
-            logger.error(f"[GPT] 음악 시스템 로드 실패: {e}")
-        
-        # 슬래시 명령어 동기화
-        try:
-            synced = await self.tree.sync()
-            logger.info(f"[GPT] 슬래시 명령어 {len(synced)}개 동기화 완료")
-        except Exception as e:
-            logger.error(f"[GPT] 명령어 동기화 실패: {e}")
-    
-    async def on_ready(self):
-        """봇 준비 완료 시"""
-        logger.info(f'[GPT] {self.user.name} 음악 봇이 준비되었습니다!')
-        logger.info(f'[GPT] 연결된 서버: {len(self.guilds)}개')
-        
-        await self.change_presence(
-            activity=discord.Activity(
-                type=discord.ActivityType.listening,
-                name="Siri의 명령"
-            )
-        )
-    
-    async def on_command_error(self, ctx, error):
-        """명령어 오류 처리"""
-        if isinstance(error, commands.CommandNotFound):
-            return
-        logger.error(f"[GPT] 명령어 오류: {error}")
-    
-    async def close(self):
-        """봇 종료 시 정리"""
-        logger.info("[GPT] 음악 봇 종료 시작...")
-        
-        music_cog = self.get_cog('MusicCog')
-        if music_cog:
-            try:
-                await music_cog.cleanup_all_players()
-                logger.info("[GPT] 음악 시스템 정리 완료")
-            except Exception as e:
-                logger.error(f"[GPT] 음악 시스템 정리 중 오류: {e}")
-        
-        await super().close()
-        logger.info("[GPT] 음악 봇 정리 완료")
-
-
-# Flask API 엔드포인트
-@app.route('/health', methods=['GET'])
-def health_check():
-    """헬스 체크"""
-    return jsonify({
-        "status": "healthy",
-        "gpt_bot_ready": gpt_bot is not None and gpt_bot.is_ready()
-    })
-
-
-@app.route('/play', methods=['POST'])
-def play_music():
-    """음악 재생 API"""
-    try:
-        data = request.get_json()
-        
-        if not data:
-            return jsonify({"status": "error", "message": "데이터가 없습니다"}), 400
-        
-        query = data.get('query')
-        guild_id = data.get('guild_id')
-        channel_id = data.get('channel_id')
-        user = data.get('user', 'Unknown')
-        
-        if not query or not guild_id or not channel_id:
-            return jsonify({
-                "status": "error",
-                "message": "필수 파라미터 누락 (query, guild_id, channel_id)"
-            }), 400
-        
-        logger.info(f"[API] 재생 요청: {query} (사용자: {user}, 길드: {guild_id})")
-        
-        result = asyncio.run_coroutine_threadsafe(
-            handle_play_command(guild_id, channel_id, query, user),
-            gpt_bot.loop
-        ).result(timeout=30)
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"[API] 재생 API 오류: {e}")
-        return jsonify({
-            "status": "error",
-            "message": f"서버 오류: {str(e)}"
-        }), 500
-
-
-@app.route('/stop', methods=['POST'])
-def stop_music():
-    """음악 정지 API"""
-    try:
-        data = request.get_json()
-        guild_id = data.get('guild_id')
-        
-        if not guild_id:
-            return jsonify({"status": "error", "message": "guild_id 필요"}), 400
-        
-        result = asyncio.run_coroutine_threadsafe(
-            handle_stop_command(guild_id),
-            gpt_bot.loop
-        ).result(timeout=10)
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        logger.error(f"[API] 정지 API 오류: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-async def handle_play_command(guild_id: int, channel_id: int, query: str, user: str):
-    """음악 재생 명령 처리"""
-    try:
-        guild = gpt_bot.get_guild(guild_id)
-        if not guild:
-            return {"status": "error", "message": "서버를 찾을 수 없습니다"}
-        
-        channel = guild.get_channel(channel_id)
-        if not channel or not isinstance(channel, discord.VoiceChannel):
-            return {"status": "error", "message": "음성 채널을 찾을 수 없습니다"}
-        
-        music_cog = gpt_bot.get_cog("MusicCog")
-        if not music_cog:
-            return {"status": "error", "message": "음악 시스템이 로드되지 않았습니다"}
-        
-        player = music_cog.get_player(guild_id)
-        
-        if player.is_playing:
-            return {
-                "status": "error",
-                "message": f"이미 재생 중입니다: {player.current_track.title if player.current_track else '알 수 없음'}"
-            }
-        
-        if not await player.connect(channel):
-            return {"status": "error", "message": "음성 채널 연결 실패"}
-        
-        track_info, error_message = await player.ytdl_source.extract_info(query)
-        if not track_info:
-            await player.disconnect()
-            return {"status": "error", "message": error_message or "음악을 찾을 수 없습니다"}
-        
-        success, play_error = await player.play_track(track_info)
-        if success:
-            logger.info(f"[음악] 재생 시작: {track_info.title}")
-            return {
-                "status": "playing",
-                "song": track_info.title,
-                "uploader": track_info.uploader,
-                "thumbnail": track_info.thumbnail
-            }
-        else:
-            return {"status": "error", "message": play_error or "재생 실패"}
-        
-    except Exception as e:
-        logger.error(f"[음악] 재생 처리 중 오류: {e}")
-        return {"status": "error", "message": f"처리 중 오류: {str(e)}"}
-
-
-async def handle_stop_command(guild_id: int):
-    """음악 정지 명령 처리"""
-    try:
-        music_cog = gpt_bot.get_cog("MusicCog")
-        if not music_cog:
-            return {"status": "error", "message": "음악 시스템이 로드되지 않았습니다"}
-        
-        player = music_cog.get_player(guild_id)
-        await player.disconnect()
-        
-        return {"status": "stopped", "message": "재생이 중지되었습니다"}
-        
-    except Exception as e:
-        logger.error(f"[음악] 정지 처리 중 오류: {e}")
-        return {"status": "error", "message": str(e)}
-
-
-def run_flask():
-    """Flask 서버 실행 (별도 스레드)"""
-    host = Config.get_gpt_api_host()
-    port = Config.get_gpt_api_port()
-    logger.info(f"[Flask] API 서버 시작: http://{host}:{port}")
-    app.run(host=host, port=port, debug=False, use_reloader=False)
-
-
 async def run_siri_bot():
     """Siri 봇 실행"""
-    global siri_bot
-    siri_bot = SiriBot()
-    
     try:
         token = Config.get_bot_token()
         if not token:
@@ -489,34 +265,16 @@ async def run_siri_bot():
     except Exception as e:
         logger.error(f"[Siri] 봇 실행 오류: {e}")
     finally:
-        if not siri_bot.is_closed():
+        if siri_bot and not siri_bot.is_closed():
             await siri_bot.close()
 
 
-async def run_gpt_bot():
-    """GPT 음악 봇 실행"""
-    global gpt_bot
-    
-    token = Config.get_gpt_bot_token()
-    if not token:
-        logger.warning("[GPT] GPT_BOT_TOKEN이 설정되지 않았습니다. 음악 기능이 비활성화됩니다.")
-        return
-    
-    gpt_bot = GPTBot()
-    
-    try:
-        await gpt_bot.start(token)
-    except Exception as e:
-        logger.error(f"[GPT] 봇 실행 오류: {e}")
-    finally:
-        if not gpt_bot.is_closed():
-            await gpt_bot.close()
-
-
 async def main():
-    """메인 실행 함수 - 두 봇을 동시에 실행"""
+    """메인 실행 함수"""
+    global siri_bot
+    
     logger.info("=" * 50)
-    logger.info("Siri Discord Bot 통합 시스템 시작")
+    logger.info("Siri Discord Bot 시작")
     logger.info("=" * 50)
 
     # 환경 및 디렉토리 사전 점검
@@ -524,10 +282,9 @@ async def main():
         logger.error("사전 점검 실패로 실행을 중단합니다.")
         return
     
-    # Flask API 서버 시작 (GPT 봇이 있을 경우에만)
-    if Config.get_gpt_bot_token():
-        flask_thread = Thread(target=run_flask, daemon=True)
-        flask_thread.start()
+    # Siri 봇 인스턴스 생성
+    siri_bot = SiriBot()
+    logger.info("✅ Siri 봇 모드: 출석, 레벨링, TTS 음성 알림")
     
     # 시그널 핸들러 설정
     import signal
@@ -536,16 +293,9 @@ async def main():
     async def shutdown():
         """안전한 종료"""
         logger.info("시스템 종료 시작...")
-        tasks = []
         
         if siri_bot and not siri_bot.is_closed():
-            tasks.append(siri_bot.close())
-        
-        if gpt_bot and not gpt_bot.is_closed():
-            tasks.append(gpt_bot.close())
-        
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            await siri_bot.close()
         
         logger.info("시스템 종료 완료")
     
@@ -557,13 +307,9 @@ async def main():
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
     
-    # 두 봇을 동시에 실행
+    # Siri 봇 실행
     try:
-        await asyncio.gather(
-            run_siri_bot(),
-            run_gpt_bot(),
-            return_exceptions=True
-        )
+        await run_siri_bot()
     except KeyboardInterrupt:
         logger.info("사용자에 의해 종료됩니다...")
         await shutdown()
