@@ -28,20 +28,8 @@ class Config:
         return os.getenv("COMMAND_PREFIX", "!")
     
     @staticmethod
-    def get_https_enabled() -> bool:
-        return os.getenv("HTTPS_ENABLED", "False").lower() == "true"
-    
-    @staticmethod
-    def get_ssl_cert_path() -> str:
-        return os.getenv("SSL_CERT_PATH", "")
-    
-    @staticmethod
-    def get_ssl_key_path() -> str:
-        return os.getenv("SSL_KEY_PATH", "")
-    
-    @staticmethod
     def get_ffmpeg_path() -> str:
-        """FFmpeg 실행 파일 경로 (환경 변수로 설정 가능)"""
+        """FFmpeg 실행 파일 경로 (TTS 음성 알림에 사용)"""
         return os.getenv("FFMPEG_PATH", "ffmpeg")
     
     # 호환성을 위한 프로퍼티
