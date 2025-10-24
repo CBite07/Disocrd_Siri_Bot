@@ -20,21 +20,6 @@ class Config:
         return os.getenv("SIRI_BOT_TOKEN", "")
     
     @staticmethod
-    def get_gpt_bot_token() -> str:
-        """GPT 봇 토큰"""
-        return os.getenv("GPT_BOT_TOKEN", "")
-    
-    @staticmethod
-    def get_gpt_api_host() -> str:
-        """GPT 봇 API 호스트"""
-        return os.getenv("GPT_BOT_API_HOST", "localhost")
-    
-    @staticmethod
-    def get_gpt_api_port() -> int:
-        """GPT 봇 API 포트"""
-        return int(os.getenv("GPT_BOT_API_PORT", "5000"))
-    
-    @staticmethod
     def get_database_path() -> str:
         return os.getenv("DATABASE_PATH", "./src/data/siri_bot.db")
     
@@ -53,23 +38,6 @@ class Config:
     @staticmethod
     def get_ssl_key_path() -> str:
         return os.getenv("SSL_KEY_PATH", "")
-    
-    @staticmethod
-    def get_music_proxy_url() -> str:
-        return os.getenv("MUSIC_PROXY_URL", "")
-    
-    @staticmethod
-    def get_youtube_cookies_path() -> str:
-        """YouTube 쿠키 파일 경로"""
-        return os.getenv("YOUTUBE_COOKIES_PATH", "")
-    
-    @staticmethod
-    def get_music_use_https() -> bool:
-        return os.getenv("MUSIC_USE_HTTPS", "True").lower() == "true"
-    
-    @staticmethod
-    def get_music_geo_bypass() -> bool:
-        return os.getenv("MUSIC_GEO_BYPASS", "True").lower() == "true"
     
     @staticmethod
     def get_ffmpeg_path() -> str:
