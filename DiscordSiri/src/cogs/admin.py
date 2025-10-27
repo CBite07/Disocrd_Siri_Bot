@@ -80,8 +80,14 @@ class AdminCog(commands.Cog):
         레벨: int
     ):
         """레벨 설정"""
+        # 길드 컨텍스트 확인
+        if interaction.guild is None or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("❌ 이 명령어는 서버에서만 사용할 수 있습니다.", ephemeral=True)
+            return
         # 관리자 권한 확인
-        if not await has_admin_permissions(interaction.user):
+        from typing import cast
+        member_user = cast(discord.Member, interaction.user)
+        if not await has_admin_permissions(member_user):
             embed = create_error_embed(
                 "❌ 권한 없음",
                 "이 명령어는 관리자만 사용할 수 있습니다."
@@ -122,9 +128,10 @@ class AdminCog(commands.Cog):
             role_message = ""
             if role_assigned:
                 role_id = Config.get_role_for_level(레벨)
-                role = get_role_by_id(interaction.guild, role_id)
-                if role:
-                    role_message = f"\n🎭 {role.mention} 역할이 부여되었습니다!"
+                if role_id is not None:
+                    role = get_role_by_id(interaction.guild, role_id)
+                    if role:
+                        role_message = f"\n🎭 {role.mention} 역할이 부여되었습니다!"
             
             embed = create_success_embed(
                 "✅ 레벨 설정 완료",
@@ -147,8 +154,13 @@ class AdminCog(commands.Cog):
         유저: discord.Member
     ):
         """사용자 데이터 초기화 (확인 절차 포함)"""
-        # 관리자 권한 확인
-        if not await has_admin_permissions(interaction.user):
+        # 길드/멤버 컨텍스트 확인 및 관리자 권한 확인
+        if interaction.guild is None or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("❌ 이 명령어는 서버에서만 사용할 수 있습니다.", ephemeral=True)
+            return
+        from typing import cast
+        member_user = cast(discord.Member, interaction.user)
+        if not await has_admin_permissions(member_user):
             embed = create_error_embed(
                 "❌ 권한 없음",
                 "이 명령어는 관리자만 사용할 수 있습니다."
@@ -176,9 +188,12 @@ class AdminCog(commands.Cog):
     @app_commands.command(name="명령어목록", description="등록된 모든 명령어를 확인합니다 (개발자용)")
     async def list_commands(self, interaction: discord.Interaction):
         """등록된 모든 슬래시 명령어 목록 표시"""
-        
+        # 길드 컨텍스트 확인
+        if interaction.guild is None:
+            await interaction.response.send_message("❌ 이 명령어는 서버에서만 사용할 수 있습니다.", ephemeral=True)
+            return
         # 봇 소유자나 관리자만 사용 가능하도록 제한
-        if not (interaction.user.guild_permissions.administrator or 
+        if not (isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator or 
                 interaction.user.id == 442959929900326913):  # 봇 소유자 ID
             await interaction.response.send_message(
                 "❌ 이 명령어는 관리자만 사용할 수 있습니다.", 
@@ -234,7 +249,9 @@ class AdminCog(commands.Cog):
     @app_commands.command(name="상태", description="봇의 현재 상태를 확인합니다 (개발자용)")
     async def status_check(self, interaction: discord.Interaction):
         """봇 상태 확인"""
-        
+        if interaction.guild is None or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("❌ 이 명령어는 서버에서만 사용할 수 있습니다.", ephemeral=True)
+            return
         if not (interaction.user.guild_permissions.administrator or 
                 interaction.user.id == 442959929900326913):
             await interaction.response.send_message(
@@ -277,6 +294,51 @@ class AdminCog(commands.Cog):
         embed.set_footer(text=f"봇 ID: {self.bot.user.id}")
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    @app_commands.command(
+        name="시스템상태",
+        description="봇 시스템 상태 확인 (관리자 전용)"
+    )
+    async def system_status(self, interaction: discord.Interaction):
+        """시스템 리소스 및 상태 확인"""
+        if interaction.guild is None or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("❌ 이 명령어는 서버에서만 사용할 수 있습니다.", ephemeral=True)
+            return
+        from typing import cast
+        member_user2 = cast(discord.Member, interaction.user)
+        if not await has_admin_permissions(member_user2):
+            await interaction.response.send_message("❌ 관리자 권한이 필요합니다.", ephemeral=True)
+            return
+        
+        import psutil
+        from pathlib import Path
+        
+        # 메모리 사용량
+        process = psutil.Process()
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        
+        # 데이터베이스 파일 크기
+        db_path = Path(Config.get_database_path())
+        db_size_mb = db_path.stat().st_size / 1024 / 1024 if db_path.exists() else 0
+        
+        # 레이턴시
+        latency_ms = round(self.bot.latency * 1000, 2)
+        
+        # 사용자 통계
+        total_guilds = len(self.bot.guilds)
+        total_users = sum(g.member_count for g in self.bot.guilds)
+        
+        embed = discord.Embed(
+            title="🖥️ 시스템 상태",
+            color=Config.COLORS['info']
+        )
+        embed.add_field(name="💾 메모리", value=f"{memory_mb:.1f} MB", inline=True)
+        embed.add_field(name="📊 DB 크기", value=f"{db_size_mb:.1f} MB", inline=True)
+        embed.add_field(name="📡 레이턴시", value=f"{latency_ms} ms", inline=True)
+        embed.add_field(name="🏠 서버 수", value=f"{total_guilds}", inline=True)
+        embed.add_field(name="👥 사용자 수", value=f"{total_users}", inline=True)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 class DataResetConfirmView(discord.ui.View):
     """데이터 초기화 확인 뷰"""
@@ -292,10 +354,10 @@ class DataResetConfirmView(discord.ui.View):
         await interaction.response.defer()
         
         # 데이터베이스 초기화
-        success = await self.database.reset_user_data(
-            self.target_user.id, 
-            interaction.guild.id
-        )
+        if interaction.guild is None:
+            await interaction.followup.send("❌ 이 작업은 서버에서만 가능합니다.", ephemeral=True)
+            return
+        success = await self.database.reset_user_data(self.target_user.id, interaction.guild.id)
         
         # 레벨 역할 제거
         roles_removed = await self.remove_level_roles(interaction.guild, self.target_user)
@@ -313,8 +375,9 @@ class DataResetConfirmView(discord.ui.View):
             )
         
         # 버튼 비활성화
-        for item in self.children:
-            item.disabled = True
+        for item in list(self.children):
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
         
         await interaction.edit_original_response(embed=embed, view=self)
     
@@ -361,15 +424,17 @@ class DataResetConfirmView(discord.ui.View):
         )
         
         # 버튼 비활성화
-        for item in self.children:
-            item.disabled = True
+        for item in list(self.children):
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
         
         await interaction.response.edit_message(embed=embed, view=self)
     
     async def on_timeout(self):
         """타임아웃 처리"""
-        for item in self.children:
-            item.disabled = True
+        for item in list(self.children):
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
 
 async def setup(bot):
     """Cog 로드"""
