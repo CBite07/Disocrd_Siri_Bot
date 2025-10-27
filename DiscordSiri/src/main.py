@@ -40,6 +40,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# asyncio 경고 레벨 조정 (aiohttp 세션 경고 억제)
+logging.getLogger('asyncio').setLevel(logging.CRITICAL)
+
 
 def preflight_check() -> bool:
     """실행 전 환경 및 디렉토리 점검.
@@ -248,7 +251,20 @@ class SiriBot(commands.Bot):
             except Exception as e:
                 logger.error(f"[Siri] 데이터베이스 종료 중 오류: {e}")
         
+        # 상위 클래스의 close 호출 전에 대기 (HTTP 세션이 정리될 시간 확보)
+        await asyncio.sleep(0.3)
+        
+        # 상위 클래스의 close 호출 (HTTP 세션 정리 포함)
         await super().close()
+        
+        # 모든 비동기 작업이 완료될 때까지 대기
+        await asyncio.sleep(0.5)
+        
+        # 가비지 컬렉션 강제 실행 (미사용 세션 정리)
+        import gc
+        gc.collect()
+        await asyncio.sleep(0.2)
+        
         logger.info("[Siri] 봇 정리 작업 완료")
 
 
@@ -289,12 +305,32 @@ async def main():
     import signal
     import sys
     
+    shutdown_in_progress = False
+    
     async def shutdown():
         """안전한 종료"""
+        nonlocal shutdown_in_progress
+        
+        if shutdown_in_progress:
+            logger.info("이미 종료 작업이 진행 중입니다...")
+            return
+        
+        shutdown_in_progress = True
         logger.info("시스템 종료 시작...")
         
         if siri_bot and not siri_bot.is_closed():
-            await siri_bot.close()
+            try:
+                await siri_bot.close()
+            except Exception as e:
+                logger.error(f"봇 종료 중 오류: {e}")
+        
+        # 모든 리소스와 세션이 정리될 때까지 충분한 대기
+        await asyncio.sleep(1.0)
+        
+        # 가비지 컬렉션 강제 실행
+        import gc
+        gc.collect()
+        await asyncio.sleep(0.3)
         
         logger.info("시스템 종료 완료")
     
