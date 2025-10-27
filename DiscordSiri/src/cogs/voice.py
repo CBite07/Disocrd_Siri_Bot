@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 import tempfile
 import re
+import warnings
 
 from utils.config import Config
 from utils.helpers import has_admin_permissions
@@ -34,6 +35,8 @@ class VoiceCog(commands.Cog):
         # 임시 파일 저장 경로
         self.temp_dir = Path(tempfile.gettempdir()) / "siri_tts"
         self.temp_dir.mkdir(exist_ok=True)
+        # gTTS 관련 세션 정리를 위한 플래그
+        self._cleanup_done = False
         
         # 이모티콘 매핑 (디스코드 커스텀 이모티콘 및 유니코드 이모티콘)
         self.emoji_mapping = {
@@ -171,10 +174,14 @@ class VoiceCog(commands.Cog):
             
             # gTTS로 음성 생성 (비동기 실행을 위해 run_in_executor 사용)
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                lambda: gTTS(text=text, lang='ko', slow=False).save(str(temp_file))
-            )
+            
+            # ResourceWarning 경고 억제 (gTTS 내부 세션 경고)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=ResourceWarning)
+                await loop.run_in_executor(
+                    None,
+                    lambda: gTTS(text=text, lang='ko', slow=False).save(str(temp_file))
+                )
             
             # 파일이 실제로 생성되었는지 확인
             if not temp_file.exists():
@@ -565,6 +572,10 @@ class VoiceCog(commands.Cog):
     
     async def cog_unload(self):
         """Cog 언로드 시 정리 작업"""
+        if self._cleanup_done:
+            return
+        
+        self._cleanup_done = True
         logger.info("VoiceCog 언로드 시작 - 음성 채널 정리 중...")
         
         # 모든 음성 연결 정리
@@ -605,6 +616,13 @@ class VoiceCog(commands.Cog):
                 logger.info(f"임시 TTS 파일 {cleaned_count}개 정리 완료")
         except Exception as e:
             logger.error(f"임시 파일 정리 중 오류: {e}")
+        
+        # gTTS가 사용하는 aiohttp 세션 정리를 위한 충분한 대기
+        # 가비지 컬렉션 강제 실행
+        import gc
+        gc.collect()
+        await asyncio.sleep(0.5)
+        gc.collect()
         
         logger.info("VoiceCog 언로드 완료")
 
