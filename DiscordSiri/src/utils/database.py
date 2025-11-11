@@ -4,10 +4,13 @@ SQLite를 사용한 사용자 데이터 관리
 확장 가능한 구조로 설계
 """
 
+import asyncio
+import sqlite3
 import aiosqlite
 import logging
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, List, Dict, Any
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -229,3 +232,95 @@ class DatabaseManager:
         """데이터베이스 연결 정리"""
         # SQLite는 연결을 매번 열고 닫기 때문에 특별한 정리가 필요없음
         logger.info("데이터베이스 연결 정리 완료")
+    
+    async def get_schema_version(self) -> int:
+        """현재 데이터베이스 스키마 버전 확인"""
+        try:
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS schema_version (
+                        version INTEGER PRIMARY KEY,
+                        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                await conn.commit()
+                cursor = await conn.execute(
+                    "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1"
+                )
+                row = await cursor.fetchone()
+                return row[0] if row else 0
+        except:
+            return 0
+    
+    async def migrate_schema(self):
+        """스키마 마이그레이션 실행"""
+        current_version = await self.get_schema_version()
+        
+        # 버전 1: schema_version 테이블 생성
+        if current_version < 1:
+            async with aiosqlite.connect(self.db_path) as conn:
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS schema_version (
+                        version INTEGER PRIMARY KEY,
+                        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                await conn.execute("INSERT INTO schema_version (version) VALUES (1)")
+                await conn.commit()
+                logger.info("스키마 버전 1 적용 완료")
+    
+    async def backup_database(self) -> str:
+        """
+        데이터베이스 백업 생성
+        
+        Returns:
+            백업 파일 경로
+        """
+        try:
+            source_path = Path(self.db_path).resolve()
+
+            if not source_path.exists():
+                raise FileNotFoundError(f"데이터베이스 파일을 찾을 수 없습니다: {source_path}")
+
+            backup_dir = source_path.parent / "backups"
+            backup_dir.mkdir(parents=True, exist_ok=True)
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = backup_dir / f"siri_bot_backup_{timestamp}.db"
+
+            def _backup_sqlite() -> None:
+                with sqlite3.connect(source_path, timeout=30) as source_conn:
+                    source_conn.execute("PRAGMA busy_timeout = 30000")
+                    source_conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                    with sqlite3.connect(backup_path) as dest_conn:
+                        source_conn.backup(dest_conn, pages=100, progress=None)
+
+            await asyncio.to_thread(_backup_sqlite)
+
+            logger.info(f"데이터베이스 백업 완료: {backup_path}")
+            return str(backup_path)
+
+        except Exception as e:
+            logger.error(f"데이터베이스 백업 실패: {e}")
+            raise
+    
+    async def cleanup_old_backups(self, keep_days: int = 30):
+        """오래된 백업 파일 정리"""
+        try:
+            backup_dir = Path(self.db_path).parent / "backups"
+            if not backup_dir.exists():
+                return
+            
+            cutoff_time = datetime.now().timestamp() - (keep_days * 24 * 60 * 60)
+            deleted_count = 0
+            
+            for backup_file in backup_dir.glob("siri_bot_backup_*.db"):
+                if backup_file.stat().st_mtime < cutoff_time:
+                    backup_file.unlink()
+                    deleted_count += 1
+            
+            if deleted_count > 0:
+                logger.info(f"{deleted_count}개의 오래된 백업 파일 삭제")
+                
+        except Exception as e:
+            logger.error(f"백업 정리 중 오류: {e}")
