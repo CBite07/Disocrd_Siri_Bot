@@ -113,6 +113,10 @@ class AdminCog(commands.Cog):
         
         # 레벨에 해당하는 XP 계산
         target_xp = Config.calculate_xp_for_level(레벨)
+        xp_capped = False
+        if target_xp >= Config.MAX_XP:
+            target_xp = Config.MAX_XP
+            xp_capped = True
         
         # 현재 XP와의 차이 계산
         current_data = await self.bot.db.get_user_data(유저.id, interaction.guild.id)
@@ -138,6 +142,12 @@ class AdminCog(commands.Cog):
                 f"{유저.mention}님의 레벨을 **{레벨}**로 설정했습니다.\n"
                 f"총 경험치: {format_number(target_xp)} XP{role_message}"
             )
+            if xp_capped:
+                embed.add_field(
+                    name="⚠️ XP 제한",
+                    value="SQLite 한계를 넘어서는 경험치는 `MAX_XP`(~9e18)으로 제한되었습니다.",
+                    inline=False,
+                )
         else:
             embed = create_error_embed(
                 "❌ 레벨 설정 실패",
