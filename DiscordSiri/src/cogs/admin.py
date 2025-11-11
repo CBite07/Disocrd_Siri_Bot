@@ -310,7 +310,16 @@ class AdminCog(commands.Cog):
             await interaction.response.send_message("❌ 관리자 권한이 필요합니다.", ephemeral=True)
             return
         
-        import psutil
+        try:
+            import psutil
+        except ImportError:
+            embed = create_error_embed(
+                "❌ 시스템 모듈 없음",
+                "`psutil` 패키지가 설치되어 있지 않아 시스템 정보를 불러올 수 없습니다."
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
         from pathlib import Path
         
         # 메모리 사용량
@@ -326,7 +335,7 @@ class AdminCog(commands.Cog):
         
         # 사용자 통계
         total_guilds = len(self.bot.guilds)
-        total_users = sum(g.member_count for g in self.bot.guilds)
+        total_users = sum((g.member_count or 0) for g in self.bot.guilds)
         
         embed = discord.Embed(
             title="🖥️ 시스템 상태",
