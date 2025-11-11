@@ -14,6 +14,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
 import discord
 from discord.ext import commands
@@ -21,6 +22,7 @@ from dotenv import load_dotenv
 
 from utils.database import DatabaseManager
 from utils.config import Config
+from utils.helpers import MessageCleanupManager
 
 # 프로젝트 루트 경로 설정
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -112,6 +114,8 @@ class SiriBot(commands.Bot):
         )
         
         self.db = None
+        self._synced = False
+        self.cleanup_manager = MessageCleanupManager()
         
     async def setup_hook(self):
         """봇 시작 시 초기 설정"""
@@ -123,6 +127,32 @@ class SiriBot(commands.Bot):
         
         # Cogs 로드
         await self.load_cogs()
+
+        if not self._synced:
+            try:
+                synced = await self.tree.sync()
+                self._synced = True
+                logger.info(f"[Siri] 초기 슬래시 명령어 {len(synced)}개 동기화 완료")
+            except Exception as e:
+                logger.error(f"[Siri] 초기 명령어 동기화 실패: {e}")
+
+        self.cleanup_manager.start()
+
+        # 동기화 텍스트 명령어 등록 (봇 소유자 전용)
+        async def sync_cmd(ctx: commands.Context):
+            if ctx.author.id != 442959929900326913:
+                await ctx.send("❌ 이 명령어는 봇 소유자만 사용할 수 있습니다.")
+                return
+            try:
+                synced = await self.tree.sync()
+                self._synced = True
+                await ctx.send(f"✅ 슬래시 명령어 {len(synced)}개 동기화 완료!")
+                logger.info(f"[Siri] 수동 동기화: {len(synced)}개 명령어")
+            except Exception as e:
+                await ctx.send(f"❌ 동기화 실패: {e}")
+                logger.error(f"[Siri] 수동 동기화 실패: {e}")
+
+        self.add_command(commands.Command(sync_cmd, name="sync"))
         
         logger.info("Siri Bot 초기화 완료!")
     
@@ -131,9 +161,10 @@ class SiriBot(commands.Bot):
         cog_files = [
             'cogs.attendance',
             'cogs.leaderboard', 
-            'cogs.admin',  # debug 기능 포함
+            'cogs.admin',
             'cogs.announcement',
-            'cogs.voice'   # TTS 음성 기능
+            'cogs.voice',
+            'cogs.maintenance'  # 유지보수 Cog 추가
         ]
         
         for cog in cog_files:
@@ -149,8 +180,10 @@ class SiriBot(commands.Bot):
         
         # 슬래시 명령어 동기화
         try:
-            synced = await self.tree.sync()
-            logger.info(f"[Siri] 슬래시 명령어 {len(synced)}개 동기화 완료")
+            if not self._synced:
+                synced = await self.tree.sync()
+                self._synced = True
+                logger.info(f"[Siri] 슬래시 명령어 {len(synced)}개 동기화 완료")
         except Exception as e:
             logger.error(f"[Siri] 명령어 동기화 실패: {e}")
         
@@ -170,24 +203,13 @@ class SiriBot(commands.Bot):
             logger.error(f"[Siri] 명령어 오류: {error}")
             await ctx.send("❌ 명령어 처리 중 오류가 발생했습니다.")
     
-    @commands.command(name='sync')
-    async def sync_commands(self, ctx):
-        """슬래시 명령어 수동 동기화 (봇 소유자 전용)"""
-        if ctx.author.id != 442959929900326913:
-            await ctx.send("❌ 이 명령어는 봇 소유자만 사용할 수 있습니다.")
-            return
-        
-        try:
-            synced = await self.tree.sync()
-            await ctx.send(f"✅ 슬래시 명령어 {len(synced)}개 동기화 완료!")
-            logger.info(f"[Siri] 수동 동기화: {len(synced)}개 명령어")
-        except Exception as e:
-            await ctx.send(f"❌ 동기화 실패: {e}")
-            logger.error(f"[Siri] 수동 동기화 실패: {e}")
+    
 
     async def close(self):
         """봇 종료 시 정리 작업"""
         logger.info("[Siri] 봇 종료 시작 - 정리 작업 수행 중...")
+
+        await self.cleanup_manager.shutdown()
         
         # 음성 시스템 정리
         voice_cog = self.get_cog('VoiceCog')
@@ -197,13 +219,18 @@ class SiriBot(commands.Bot):
                 for guild in self.guilds:
                     if guild.voice_client:
                         try:
-                            if guild.voice_client.is_playing():
-                                guild.voice_client.stop()
+                            vc = cast(discord.VoiceClient, guild.voice_client)
+                            if vc.is_playing():
+                                vc.stop()
                                 await asyncio.sleep(0.3)
                             
                             try:
                                 tts_text = "잠시 후 돌아올게요"
-                                audio_file = await voice_cog.generate_tts(tts_text)
+                                # 타입 힌트: VoiceCog
+                                if TYPE_CHECKING:
+                                    from cogs.voice import VoiceCog  # pragma: no cover
+                                vcog = cast(object, voice_cog)
+                                audio_file = await getattr(vcog, 'generate_tts')(tts_text)
                                 audio_source = discord.FFmpegPCMAudio(audio_file)
                                 
                                 done = asyncio.Event()
@@ -216,26 +243,29 @@ class SiriBot(commands.Bot):
                                         pass
                                     done.set()
                                 
-                                guild.voice_client.play(audio_source, after=cleanup_after)
+                                vc.play(audio_source, after=cleanup_after)
                                 
                                 try:
                                     await asyncio.wait_for(done.wait(), timeout=3.0)
                                 except asyncio.TimeoutError:
-                                    guild.voice_client.stop()
+                                    vc.stop()
                                 
                             except Exception as e:
                                 logger.warning(f"[Siri] 작별 인사 TTS 실패: {e}")
                             
-                            await guild.voice_client.disconnect()
+                            await vc.disconnect(force=False)
                             logger.info(f"[Siri] 길드 {guild.name}: 음성 채널 연결 종료")
                             
                         except Exception as e:
                             logger.error(f"[Siri] 길드 {guild.name} 음성 정리 중 오류: {e}")
                 
                 try:
-                    for file in voice_cog.temp_dir.glob("tts_*.mp3"):
-                        file.unlink()
-                    logger.info("[Siri] 임시 TTS 파일 정리 완료")
+                    vcog = cast(object, voice_cog)
+                    temp_dir = getattr(vcog, 'temp_dir', None)
+                    if temp_dir is not None:
+                        for file in temp_dir.glob("tts_*.mp3"):
+                            file.unlink()
+                        logger.info("[Siri] 임시 TTS 파일 정리 완료")
                 except Exception as e:
                     logger.error(f"[Siri] 임시 파일 정리 중 오류: {e}")
                 
@@ -267,8 +297,21 @@ class SiriBot(commands.Bot):
         
         logger.info("[Siri] 봇 정리 작업 완료")
 
+    async def on_error(self, event: str, *args, **kwargs):
+        """전역 에러 핸들러"""
+        logger.error(f"이벤트 '{event}'에서 오류 발생", exc_info=True)
 
-async def run_siri_bot():
+    async def on_message(self, message: discord.Message):
+        """봇 메시지 자동 정리"""
+        if message.author == self.user and not self.cleanup_manager.should_skip(message):
+            flags = getattr(message, "flags", None)
+            if not flags or not getattr(flags, "ephemeral", False):
+                self.cleanup_manager.schedule(message)
+
+        await super().on_message(message)
+
+
+async def run_siri_bot(bot: SiriBot):
     """Siri 봇 실행"""
     try:
         token = Config.get_bot_token()
@@ -276,12 +319,12 @@ async def run_siri_bot():
             logger.error("[Siri] BOT_TOKEN이 설정되지 않았습니다!")
             return
         
-        await siri_bot.start(token)
+        await bot.start(token)
     except Exception as e:
         logger.error(f"[Siri] 봇 실행 오류: {e}")
     finally:
-        if siri_bot and not siri_bot.is_closed():
-            await siri_bot.close()
+        if bot and not bot.is_closed():
+            await bot.close()
 
 
 async def main():
@@ -344,7 +387,7 @@ async def main():
     
     # Siri 봇 실행
     try:
-        await run_siri_bot()
+        await run_siri_bot(siri_bot)
     except KeyboardInterrupt:
         logger.info("사용자에 의해 종료됩니다...")
         await shutdown()
