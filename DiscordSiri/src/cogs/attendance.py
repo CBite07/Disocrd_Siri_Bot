@@ -1,6 +1,6 @@
 """
 출석 체크 및 레벨링 시스템 Cog
-핵심 기능: /ㅊㅊ 명령어를 통한 출석 체크 및 XP 획득
+핵심 기능: 채팅창에 'ㅊㅊ' 메시지를 보내 출석 체크 및 XP 획득
 """
 
 import discord
@@ -8,6 +8,7 @@ from discord.ext import commands
 from discord import app_commands
 import logging
 import random
+from typing import Optional, cast
 
 from utils.config import Config
 from utils.helpers import (
@@ -41,90 +42,128 @@ class AttendanceCog(commands.Cog):
             "님 한 걸음 더 성장했어요! 축하해요!"
         ]
     
-    @app_commands.command(name="ㅊㅊ", description="출석 체크를 합니다")
-    async def attendance(self, interaction: discord.Interaction):
-        """출석 체크 명령어"""
-        user_id = interaction.user.id
-        guild_id = interaction.guild.id
-        
-        # 사용자 데이터 확인 및 생성
+    async def _process_attendance(
+        self,
+        member: discord.Member,
+        channel: discord.abc.Messageable,
+        reference: Optional[discord.Message] = None,
+    ) -> None:
+        """채팅 메시지를 통한 출석 체크 처리"""
+        user_id = member.id
+        guild = member.guild
+        guild_id = guild.id
+
         user_data = await self.bot.db.get_user_data(user_id, guild_id)
         if not user_data:
             await self.bot.db.create_user(user_id, guild_id)
             user_data = await self.bot.db.get_user_data(user_id, guild_id)
-        
-        # 출석 체크 처리
-        success, old_level, new_level = await self.bot.db.update_attendance(
+
+        success, _, _ = await self.bot.db.update_attendance(
             user_id, guild_id, Config.XP_PER_ATTENDANCE
         )
-        
+
         if not success:
-            # 이미 출석한 경우 - ephemeral 메시지로 즉시 응답
             embed = create_error_embed(
                 "❌ 출석 체크 실패",
                 "오늘은 이미 출석 체크를 완료했습니다!\n내일 다시 시도해주세요."
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            if reference is not None:
+                await channel.send(embed=embed, reference=reference, mention_author=False)
+            else:
+                await channel.send(embed=embed)
             return
-        
-        # 성공한 경우에만 defer 사용
-        await interaction.response.defer()
-        
-        # 현재 사용자 데이터 다시 조회 (XP 업데이트 후)
+
         updated_user_data = await self.bot.db.get_user_data(user_id, guild_id)
         current_xp = updated_user_data['xp']
-        
-        # XP 기반으로 실제 레벨 계산
+
         actual_old_level = Config.calculate_level_from_xp(current_xp - Config.XP_PER_ATTENDANCE)
         actual_new_level = Config.calculate_level_from_xp(current_xp)
         current_level = actual_new_level
-        
-        # 레벨 100 (최대 레벨) 처리
+
         if current_level >= 100:
             progress_info = "**다음 레벨까지:**\n    🏆 **LEVEL MAX** - 더 이상 올릴 레벨이 없습니다!"
         else:
             current_level, progress_xp, needed_xp = Config.get_level_progress(current_xp)
             progress_bar = format_progress_bar(progress_xp, needed_xp)
             progress_info = f"**다음 레벨까지:**\n    {progress_bar}"
-        
-        # 랜덤 출석체크 완료 메시지 선택
+
         random_message = random.choice(self.attendance_messages)
-        
-        # 성공적인 출석 체크 메시지
-        embed = create_success_embed(
+
+        success_embed = create_success_embed(
             "✅ 출석 체크 완료!",
-            f"{interaction.user.mention}{random_message}\n\n"
+            f"{member.mention}{random_message}\n\n"
             f"**현재 레벨:** {current_level}\n"
             f"{progress_info}"
         )
-        
-        # 레벨업 확인 (실제 XP 기반 레벨로 확인)
+
+        if reference is not None:
+            sent_message = await channel.send(
+                embed=success_embed,
+                reference=reference,
+                mention_author=False,
+            )
+        else:
+            sent_message = await channel.send(embed=success_embed)
+
         if actual_new_level > actual_old_level:
-            # 레벨업 메시지 추가 (실제 레벨 변화 표시)
-            level_up_embed = create_level_up_embed(interaction.user, actual_old_level, actual_new_level)
-            
-            # 역할 부여 시도
-            role_assigned = await self.assign_level_role(interaction.user, actual_new_level)
+            level_up_embed = create_level_up_embed(member, actual_old_level, actual_new_level)
+
+            role_assigned = await self.assign_level_role(member, actual_new_level)
             if role_assigned:
                 role_id = Config.get_role_for_level(actual_new_level)
-                role = get_role_by_id(interaction.guild, role_id)
-                if role:
-                    level_up_embed.add_field(
-                        name="🎭 역할 부여",
-                        value=f"{role.mention} 역할이 부여되었습니다!",
-                        inline=False
-                    )
-            
-            await interaction.followup.send(embed=embed)
-            await interaction.followup.send(embed=level_up_embed)
-        else:
-            await interaction.followup.send(embed=embed)
+                if role_id is not None:
+                    role = get_role_by_id(guild, role_id)
+                    if role:
+                        level_up_embed.add_field(
+                            name="🎭 역할 부여",
+                            value=f"{role.mention} 역할이 부여되었습니다!",
+                            inline=False,
+                        )
+
+            await channel.send(
+                embed=level_up_embed,
+                reference=sent_message,
+                mention_author=False,
+            )
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """채팅 메시지 기반 출석 체크 트리거"""
+        if message.author.bot or message.guild is None:
+            return
+
+        if message.content.strip() != "ㅊㅊ":
+            return
+
+        member = message.author
+        if not isinstance(member, discord.Member):
+            return
+
+        try:
+            await self._process_attendance(member, message.channel, reference=message)
+            try:
+                await message.add_reaction("✅")
+            except discord.Forbidden:
+                pass
+        except Exception as exc:
+            logger.error("출석 체크 처리 중 오류: %s", exc, exc_info=True)
+            error_embed = create_error_embed(
+                "❌ 출석 처리 실패",
+                "출석 체크를 처리하는 동안 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+            )
+            await message.channel.send(embed=error_embed, reference=message, mention_author=False)
     
     @app_commands.command(name="내정보", description="현재 레벨과 진행도를 확인합니다")
     @app_commands.describe(공개="다른 사람도 볼 수 있게 공개할지 선택 (기본값: 비공개)")
     async def my_info(self, interaction: discord.Interaction, 공개: bool = False):
         """레벨 정보 조회 - 자신의 정보만 확인 가능"""
-        target_user = interaction.user
+        if interaction.guild is None or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message(
+                create_error_embed("❌ 사용 불가", "이 명령어는 서버에서만 사용할 수 있습니다."),
+                ephemeral=True,
+            )
+            return
+        target_user = cast(discord.Member, interaction.user)
         user_data = await self.bot.db.get_user_data(target_user.id, interaction.guild.id)
         
         if not user_data:
