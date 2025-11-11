@@ -99,7 +99,9 @@ class DatabaseManager:
                 if not row:
                     return False
                 
+                from utils.config import Config
                 new_xp = max(0, row[0] + xp_change)  # XP는 0 이하로 떨어지지 않음
+                new_xp = min(new_xp, Config.MAX_XP)
                 
                 await db.execute("""
                     UPDATE users 
@@ -142,7 +144,8 @@ class DatabaseManager:
                     return False, old_level, old_level
                 
                 # XP 업데이트 및 출석일 기록
-                new_xp = current_xp + xp_gain
+                from utils.config import Config
+                new_xp = min(current_xp + xp_gain, Config.MAX_XP)
                 
                 await db.execute("""
                     UPDATE users 
@@ -215,11 +218,13 @@ class DatabaseManager:
                 from utils.config import Config
                 new_level = Config.calculate_level_from_xp(new_xp)
                 
+                safe_xp = min(max(new_xp, 0), Config.MAX_XP)
+
                 await db.execute("""
                     UPDATE users 
                     SET xp = ?, level = ?, updated_at = CURRENT_TIMESTAMP
                     WHERE user_id = ? AND guild_id = ?
-                """, (new_xp, new_level, user_id, guild_id))
+                """, (safe_xp, new_level, user_id, guild_id))
                 
                 await db.commit()
                 return True
