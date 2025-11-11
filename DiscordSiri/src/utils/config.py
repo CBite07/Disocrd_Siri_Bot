@@ -66,6 +66,22 @@ class Config:
         (70, 999): 1392431727292448922,   # 레전드 (70레벨 이상)
     }
     
+    # 백업 설정
+    BACKUP_ENABLED = True
+    BACKUP_RETENTION_DAYS = 30  # 30일간 백업 보관
+    BACKUP_HOUR = 3  # 백업 시간 (새벽 3시)
+    
+    # 성능 및 안정성 설정
+    MAX_LEVEL = 100  # 최대 레벨 제한
+    DATABASE_POOL_SIZE = 10  # 향후 확장 시
+    
+    # 레이트 리밋 설정 (남용 방지)
+    COMMAND_COOLDOWN = 3  # 일반 명령어 쿨다운 (초)
+    ATTENDANCE_COOLDOWN = 24 * 60 * 60  # 출석 쿨다운 (24시간)
+
+    # 저장 가능한 XP 한도 (SQLite INTEGER 최대값 보호)
+    MAX_XP = 9_000_000_000_000_000_000  # 9e18, signed 64bit 안전 영역
+    
     @classmethod
     def get_role_for_level(cls, level: int) -> int | None:
         """레벨에 맞는 역할 ID 반환"""
@@ -76,37 +92,63 @@ class Config:
     
     @classmethod
     def calculate_xp_for_level(cls, level: int) -> int:
-        """특정 레벨 달성에 필요한 총 XP 계산"""
+        """특정 레벨 달성에 필요한 총 XP 계산 (수정됨)"""
+        if level <= 1:
+            return 0
+
+        if level > cls.MAX_LEVEL:
+            level = cls.MAX_LEVEL
+        
         total_xp = 0
-        for i in range(1, level):
-            total_xp += int(cls.BASE_XP_REQUIREMENT * (i ** cls.XP_MULTIPLIER))
-        return total_xp
+        for i in range(1, min(level, cls.MAX_LEVEL)):
+            # i 레벨에서 i+1 레벨로 가는데 필요한 XP
+            total_xp += int(cls.BASE_XP_REQUIREMENT * (cls.XP_MULTIPLIER ** (i - 1)))
+            if total_xp >= cls.MAX_XP:
+                return cls.MAX_XP
+        return min(total_xp, cls.MAX_XP)
     
     @classmethod
     def calculate_level_from_xp(cls, xp: int) -> int:
-        """XP로부터 레벨 계산"""
-        level = 1
-        total_xp = 0
-        
-        while True:
-            next_level_xp = int(cls.BASE_XP_REQUIREMENT * (level ** cls.XP_MULTIPLIER))
-            if total_xp + next_level_xp > xp:
-                break
-            total_xp += next_level_xp
-            level += 1
+        """XP로부터 레벨 계산 (수정됨)"""
+        if xp < 0:
+            return 1
+        xp = min(xp, cls.MAX_XP)
+        if xp >= cls.MAX_XP:
+            return cls.MAX_LEVEL
             
-        return level
+        level = 1
+        accumulated_xp = 0
+        
+        while level < cls.MAX_LEVEL:
+            # 현재 레벨에서 다음 레벨로 가는데 필요한 XP
+            xp_needed = min(
+                int(cls.BASE_XP_REQUIREMENT * (cls.XP_MULTIPLIER ** (level - 1))),
+                cls.MAX_XP,
+            )
+
+            if accumulated_xp + xp_needed > xp:
+                break
+
+            accumulated_xp += xp_needed
+            if accumulated_xp >= cls.MAX_XP:
+                return cls.MAX_LEVEL
+            level += 1
+
+        return min(level, cls.MAX_LEVEL)
     
     @classmethod
     def get_level_progress(cls, xp: int) -> tuple[int, int, int]:
         """
-        현재 XP를 바탕으로 레벨 진행도 계산
+        현재 XP를 바탕으로 레벨 진행도 계산 (수정됨)
         
         Returns:
             tuple: (현재 레벨, 현재 레벨 진행도, 다음 레벨까지 필요 XP)
         """
         current_level = cls.calculate_level_from_xp(xp)
         current_level_total_xp = cls.calculate_xp_for_level(current_level)
+        if current_level >= cls.MAX_LEVEL:
+            return current_level, 0, 0
+
         next_level_total_xp = cls.calculate_xp_for_level(current_level + 1)
         
         current_level_progress = xp - current_level_total_xp
