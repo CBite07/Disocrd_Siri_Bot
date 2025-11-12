@@ -7,12 +7,11 @@ def get_cog_name(command):
 
 
 def format_command_text(cmd_list):
-    return "\n".join(f"`/{cmd['name']}` - {cmd['description']}" 
-                    for cmd in cmd_list)
+    return "\n".join(f"`/{cmd['name']}` - {cmd['description']}" for cmd in cmd_list)
 
 
 def create_cmd_list_embed(bot: discord.Client):
-    embed = discord.Embed(title="🔧 등록된 슬래시 명령어 목록", color=0x3498db)
+    embed = discord.Embed(title="🔧 등록된 슬래시 명령어 목록", color=0x3498DB)
     command_list = {}
 
     for command in bot.tree.get_commands():
@@ -22,8 +21,9 @@ def create_cmd_list_embed(bot: discord.Client):
         )
 
     for cog_name, cmd_list in command_list.items():
-        embed.add_field(name=f"📂 {cog_name}", 
-                        value=format_command_text(cmd_list), inline=False)
+        embed.add_field(
+            name=f"📂 {cog_name}", value=format_command_text(cmd_list), inline=False
+        )
 
     total_commands = sum(len(cmd_list) for cmd_list in command_list.values())
     embed.add_field(name="📊 통계", value=f"총 {total_commands}개 명령어", inline=True)
