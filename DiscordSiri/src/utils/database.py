@@ -8,7 +8,7 @@ import asyncio
 import sqlite3
 import aiosqlite
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
@@ -119,12 +119,21 @@ class DatabaseManager:
     async def update_attendance(self, user_id: int, guild_id: int, xp_gain: int) -> tuple[bool, int, int]:
         """
         출석 체크 처리
+        KST(한국 표준시) 오전 7시를 기준으로 날짜 계산
         
         Returns:
             tuple: (성공 여부, 이전 레벨, 새 레벨)
         """
         try:
-            today = date.today().isoformat()
+            # KST는 UTC+9이므로, UTC에서 9시간을 더한 후 다시 7시간을 빼서 계산
+            # 즉, KST 오전 7시 = UTC+2시간 기준으로 날짜 전환
+            # 예: UTC 2025-01-01 22:00 (KST 2025-01-02 07:00) -> 게임 날짜 2025-01-02
+            #     UTC 2025-01-01 21:59 (KST 2025-01-02 06:59) -> 게임 날짜 2025-01-01
+            utc_now = datetime.now(timezone.utc)
+            kst_time = utc_now + timedelta(hours=9)  # KST = UTC+9
+            # KST 오전 7시 기준으로 날짜 전환을 위해 7시간을 빼고 날짜만 추출
+            game_reference_time = kst_time - timedelta(hours=7)
+            today = game_reference_time.date().isoformat()
             
             async with aiosqlite.connect(self.db_path) as db:
                 # 사용자 데이터 조회
