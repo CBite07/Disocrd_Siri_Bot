@@ -161,7 +161,7 @@ class SiriBot(commands.Bot):
         cog_files = [
             'cogs.attendance',
             'cogs.leaderboard', 
-            'cogs.admin',
+            'cogs.admin.admin',
             'cogs.announcement',
             'cogs.voice',
             'cogs.maintenance'  # 유지보수 Cog 추가

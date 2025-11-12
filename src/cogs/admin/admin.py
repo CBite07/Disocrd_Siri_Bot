@@ -6,7 +6,12 @@ XP 조정, 데이터 초기화, 디버그 도구 등 관리 기능
 import discord
 from discord.ext import commands
 from discord import app_commands
+from pathlib import Path
 import logging
+
+import cogs.admin.common as common 
+import cogs.admin.bot_status as bot_status 
+import cogs.admin.command_list as command_list
 
 from utils.config import Config
 from utils.helpers import (
@@ -82,7 +87,9 @@ class AdminCog(commands.Cog):
         """레벨 설정"""
         # 길드 컨텍스트 확인
         if interaction.guild is None or not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("❌ 이 명령어는 서버에서만 사용할 수 있습니다.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ 이 명령어는 서버에서만 사용할 수 있습니다.", 
+                ephemeral=True)
             return
         # 관리자 권한 확인
         from typing import cast
@@ -125,7 +132,7 @@ class AdminCog(commands.Cog):
         
         # XP 업데이트
         success = await self.bot.db.update_user_xp(유저.id, interaction.guild.id, xp_difference)
-        
+
         if success:
             # 역할 부여 시도
             role_assigned = await self.assign_level_role(유저, 레벨)
@@ -155,7 +162,7 @@ class AdminCog(commands.Cog):
             )
         
         await interaction.followup.send(embed=embed)
-    
+
     @app_commands.command(name="데이터초기화", description="특정 유저의 데이터를 초기화합니다 (관리자 전용)")
     @app_commands.describe(유저="데이터를 초기화할 대상 유저")
     async def reset_user_data(
@@ -182,182 +189,50 @@ class AdminCog(commands.Cog):
         embed = discord.Embed(
             title="⚠️ 데이터 초기화 확인",
             description=f"{유저.mention}님의 모든 데이터를 초기화하시겠습니까?\n\n"
-                       f"**이 작업은 되돌릴 수 없습니다!**\n"
-                       f"• 레벨: 1로 초기화\n"
-                       f"• XP: 0으로 초기화\n"
-                       f"• 출석 기록: 삭제\n"
-                       f"• 레벨 역할: 모두 제거",
+                        f"**이 작업은 되돌릴 수 없습니다!**\n"
+                        f"• 레벨: 1로 초기화\n"
+                        f"• XP: 0으로 초기화\n"
+                        f"• 출석 기록: 삭제\n"
+                        f"• 레벨 역할: 모두 제거",
             color=Config.COLORS['warning']
         )
-        
         # 확인/취소 버튼 생성
         view = DataResetConfirmView(유저, self.bot.db)
         
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-    
-    @app_commands.command(name="명령어목록", description="등록된 모든 명령어를 확인합니다 (개발자용)")
-    async def list_commands(self, interaction: discord.Interaction):
-        """등록된 모든 슬래시 명령어 목록 표시"""
-        # 길드 컨텍스트 확인
-        if interaction.guild is None:
-            await interaction.response.send_message("❌ 이 명령어는 서버에서만 사용할 수 있습니다.", ephemeral=True)
-            return
-        # 봇 소유자나 관리자만 사용 가능하도록 제한
-        if not (isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.administrator or 
-                interaction.user.id == 442959929900326913):  # 봇 소유자 ID
-            await interaction.response.send_message(
-                "❌ 이 명령어는 관리자만 사용할 수 있습니다.", 
-                ephemeral=True
-            )
-            return
-        
-        embed = discord.Embed(
-            title="🔧 등록된 슬래시 명령어 목록",
-            color=0x3498db
-        )
-        
-        # 각 Cog별로 명령어 정리
-        command_list = {}
-        
-        for command in self.bot.tree.get_commands():
-            # Cog 이름 찾기
-            cog_name = "기타"
-            if hasattr(command, 'callback') and hasattr(command.callback, '__self__'):
-                cog_name = command.callback.__self__.__class__.__name__
-            
-            if cog_name not in command_list:
-                command_list[cog_name] = []
-            
-            command_list[cog_name].append({
-                'name': command.name,
-                'description': command.description
-            })
-        
-        # 임베드에 추가
-        for cog_name, cmd_list in command_list.items():
-            if cmd_list:
-                command_text = "\n".join([
-                    f"`/{cmd['name']}` - {cmd['description']}" 
-                    for cmd in cmd_list
-                ])
-                embed.add_field(
-                    name=f"📂 {cog_name}",
-                    value=command_text,
-                    inline=False
-                )
-        
-        embed.add_field(
-            name="📊 통계",
-            value=f"총 {len([cmd for cmd_list in command_list.values() for cmd in cmd_list])}개 명령어",
-            inline=True
-        )
-        
-        embed.set_footer(text="Siri Bot Debug Tool")
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
-    @app_commands.command(name="상태", description="봇의 현재 상태를 확인합니다 (개발자용)")
-    async def status_check(self, interaction: discord.Interaction):
-        """봇 상태 확인"""
-        if interaction.guild is None or not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("❌ 이 명령어는 서버에서만 사용할 수 있습니다.", ephemeral=True)
-            return
-        if not (interaction.user.guild_permissions.administrator or 
-                interaction.user.id == 442959929900326913):
-            await interaction.response.send_message(
-                "❌ 이 명령어는 관리자만 사용할 수 있습니다.", 
-                ephemeral=True
-            )
-            return
-        
-        embed = discord.Embed(
-            title="🤖 Siri Bot 상태",
-            color=0x00ff00
-        )
-        
-        # 기본 정보
-        embed.add_field(
-            name="📊 기본 정보",
-            value=f"• 서버 수: {len(self.bot.guilds)}개\n"
-                  f"• 사용자 수: {len(set(self.bot.get_all_members()))}명\n"
-                  f"• 지연시간: {round(self.bot.latency * 1000)}ms",
-            inline=True
-        )
-        
-        # Cog 정보
-        cog_list = [cog for cog in self.bot.cogs.keys()]
-        embed.add_field(
-            name="🔧 로드된 Cogs",
-            value="\n".join([f"• {cog}" for cog in cog_list]) if cog_list else "없음",
-            inline=True
-        )
-        
-        # 명령어 수
-        command_count = len(self.bot.tree.get_commands())
-        embed.add_field(
-            name="⚡ 슬래시 명령어",
-            value=f"{command_count}개 등록됨",
-            inline=True
-        )
-        
-        embed.set_thumbnail(url=self.bot.user.display_avatar.url)
-        embed.set_footer(text=f"봇 ID: {self.bot.user.id}")
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-    
+
+
     @app_commands.command(
-        name="시스템상태",
-        description="봇 시스템 상태 확인 (관리자 전용)"
+        name="명령어목록", 
+        description="등록된 모든 명령어를 확인합니다 (개발자용)"
     )
-    async def system_status(self, interaction: discord.Interaction):
-        """시스템 리소스 및 상태 확인"""
-        if interaction.guild is None or not isinstance(interaction.user, discord.Member):
-            await interaction.response.send_message("❌ 이 명령어는 서버에서만 사용할 수 있습니다.", ephemeral=True)
-            return
-        from typing import cast
-        member_user2 = cast(discord.Member, interaction.user)
-        if not await has_admin_permissions(member_user2):
-            await interaction.response.send_message("❌ 관리자 권한이 필요합니다.", ephemeral=True)
-            return
-        
-        try:
-            import psutil
-        except ImportError:
-            embed = create_error_embed(
-                "❌ 시스템 모듈 없음",
-                "`psutil` 패키지가 설치되어 있지 않아 시스템 정보를 불러올 수 없습니다."
+    async def list_commands(self, interaction: discord.Interaction):
+        if not common.is_admin(interaction):
+            await interaction.response.send_message(
+                "❌ 이 명령어는 관리자만 사용할 수 있습니다.", ephemeral=True
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
-        from pathlib import Path
-        
-        # 메모리 사용량
-        process = psutil.Process()
-        memory_mb = process.memory_info().rss / 1024 / 1024
-        
-        # 데이터베이스 파일 크기
-        db_path = Path(Config.get_database_path())
-        db_size_mb = db_path.stat().st_size / 1024 / 1024 if db_path.exists() else 0
-        
-        # 레이턴시
-        latency_ms = round(self.bot.latency * 1000, 2)
-        
-        # 사용자 통계
-        total_guilds = len(self.bot.guilds)
-        total_users = sum((g.member_count or 0) for g in self.bot.guilds)
-        
-        embed = discord.Embed(
-            title="🖥️ 시스템 상태",
-            color=Config.COLORS['info']
-        )
-        embed.add_field(name="💾 메모리", value=f"{memory_mb:.1f} MB", inline=True)
-        embed.add_field(name="📊 DB 크기", value=f"{db_size_mb:.1f} MB", inline=True)
-        embed.add_field(name="📡 레이턴시", value=f"{latency_ms} ms", inline=True)
-        embed.add_field(name="🏠 서버 수", value=f"{total_guilds}", inline=True)
-        embed.add_field(name="👥 사용자 수", value=f"{total_users}", inline=True)
-        
+        embed = command_list.create_cmd_list_embed(self.bot)
+        embed.set_footer(text="Siri Bot Debug Tool")
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+    @app_commands.command(
+        name="상태", 
+        description="봇의 현재 상태를 확인합니다 (개발자용)"
+    )
+    async def status_check(self, interaction: discord.Interaction):
+        if not await common.is_admin(interaction):
+            await interaction.response.send_message(
+                "❌ 이 명령어는 관리자만 사용할 수 있습니다.", ephemeral=True
+            )
+            return
+
+        db_path = bot_status.get_db_path();
+        embed = bot_status.create_status_embed(self.bot, db_path)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 class DataResetConfirmView(discord.ui.View):
     """데이터 초기화 확인 뷰"""
