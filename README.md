@@ -1,12 +1,8 @@
-<<<<<<< HEAD
-Feature branch
-=======
 <p align="center">
   <a href="https://github.com/CBite07/Disocrd_Siri_Bot">
     <img src="./DiscordSiri/assets/Union.svg" width="160" alt="Siri Bot Logo" />
   </a>
 </p>
-
 <p align="center">
   <a href="https://discord.gg/G9NAJzpxEM"><img alt="Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?style=for-the-badge&logo=discord&logoColor=white"></a>
   <a href="https://www.youtube.com/@FCPUG"><img alt="YouTube" src="https://img.shields.io/badge/YouTube-FCPUG-FF0000?style=for-the-badge&logo=youtube&logoColor=white"></a>
@@ -392,4 +388,3 @@ DiscordSiri/
 
 -   Discord: [FCPUG 서버](https://discord.gg/G9NAJzpxEM)
 -   GitHub Issues: [버그 리포트 및 제안](https://github.com/CBite07/Disocrd_Siri_Bot/issues)
->>>>>>> 576ca797e2810cc98f49e9893d9c777028ddf612
