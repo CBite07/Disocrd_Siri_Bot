@@ -225,7 +225,7 @@ class AdminCog(commands.Cog):
         name="상태", description="봇의 현재 상태를 확인합니다 (개발자용)"
     )
     async def status_check(self, interaction: discord.Interaction):
-        if not await common.is_admin(interaction):
+        if not common.is_admin(interaction):
             await interaction.response.send_message(
                 "❌ 이 명령어는 관리자만 사용할 수 있습니다.", ephemeral=True
             )
