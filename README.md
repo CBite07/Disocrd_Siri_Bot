@@ -389,7 +389,3 @@ DiscordSiri/
 
 -   Discord: [FCPUG 서버](https://discord.gg/G9NAJzpxEM)
 -   GitHub Issues: [버그 리포트 및 제안](https://github.com/CBite07/Disocrd_Siri_Bot/issues)
-
-### 라이선스
-
-이 프로젝트는 50년 이상 장기 운영을 목표로 하는 커뮤니티 프로젝트입니다.
