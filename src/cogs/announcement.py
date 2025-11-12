@@ -1,11 +1,12 @@
 """
-공지 및 규칙 시스템 Cog
-관리자용 메시지 게시 기능
+Cog Announcements and Rules System
+Admin Message Posting Feature
 """
 
 import discord
 from discord.ext import commands
 from discord import app_commands
+
 import json
 import logging
 from pathlib import Path
@@ -14,7 +15,7 @@ from typing import Optional
 from utils.config import Config
 from utils.helpers import create_success_embed, create_error_embed, has_admin_permissions
 
-PERSISTENT_RULE_MESSAGE_ID = 1372750739478282341
+PERSISTENT_RULE_MESSAGE_ID = 1372750739478282341 # Messages that should not be deleted
 
 logger = logging.getLogger(__name__)
 
