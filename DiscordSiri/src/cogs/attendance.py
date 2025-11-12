@@ -47,8 +47,13 @@ class AttendanceCog(commands.Cog):
         member: discord.Member,
         channel: discord.abc.Messageable,
         reference: Optional[discord.Message] = None,
-    ) -> None:
-        """채팅 메시지를 통한 출석 체크 처리"""
+    ) -> bool:
+        """
+        채팅 메시지를 통한 출석 체크 처리
+        
+        Returns:
+            bool: 출석 체크 성공 여부 (True: 성공, False: 중복 출석)
+        """
         user_id = member.id
         guild = member.guild
         guild_id = guild.id
@@ -71,7 +76,7 @@ class AttendanceCog(commands.Cog):
                 await channel.send(embed=embed, reference=reference, mention_author=False)
             else:
                 await channel.send(embed=embed)
-            return
+            return False
 
         updated_user_data = await self.bot.db.get_user_data(user_id, guild_id)
         current_xp = updated_user_data['xp']
@@ -92,7 +97,7 @@ class AttendanceCog(commands.Cog):
                 await channel.send(embed=maxed_embed, reference=reference, mention_author=False)
             else:
                 await channel.send(embed=maxed_embed)
-            return
+            return True
 
         current_level, progress_xp, needed_xp = Config.get_level_progress(current_xp)
         progress_bar = format_progress_bar(progress_xp, needed_xp)
@@ -136,6 +141,8 @@ class AttendanceCog(commands.Cog):
                 reference=sent_message,
                 mention_author=False,
             )
+        
+        return True
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
@@ -151,9 +158,11 @@ class AttendanceCog(commands.Cog):
             return
 
         try:
-            await self._process_attendance(member, message.channel, reference=message)
+            success = await self._process_attendance(member, message.channel, reference=message)
             try:
-                await message.add_reaction("✅")
+                # 출석 성공 시 ✅, 실패 시 ❌ 이모지 추가
+                reaction = "✅" if success else "❌"
+                await message.add_reaction(reaction)
             except discord.Forbidden:
                 pass
         except Exception as exc:
@@ -163,6 +172,11 @@ class AttendanceCog(commands.Cog):
                 "출석 체크를 처리하는 동안 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
             )
             await message.channel.send(embed=error_embed, reference=message, mention_author=False)
+            # 오류 발생 시에도 ❌ 이모지 추가
+            try:
+                await message.add_reaction("❌")
+            except discord.Forbidden:
+                pass
     
     @app_commands.command(name="내정보", description="현재 레벨과 진행도를 확인합니다")
     async def my_info(
